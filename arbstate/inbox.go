@@ -20,6 +20,8 @@ import (
 	"github.com/offchainlabs/nitro/arbos/arbostypes"
 	"github.com/offchainlabs/nitro/arbos/l1pricing"
 	"github.com/offchainlabs/nitro/arbutil"
+	"github.com/offchainlabs/nitro/das/celestia"
+	"github.com/offchainlabs/nitro/das/celestia/tree"
 	"github.com/offchainlabs/nitro/das/dastree"
 	"github.com/offchainlabs/nitro/zeroheavy"
 )
@@ -50,7 +52,7 @@ const maxZeroheavyDecompressedLen = 101*MaxDecompressedLen/100 + 64
 const MaxSegmentsPerSequencerMessage = 100 * 1024
 const MinLifetimeSecondsForDataAvailabilityCert = 7 * 24 * 60 * 60 // one week
 
-func parseSequencerMessage(ctx context.Context, batchNum uint64, data []byte, dasReader DataAvailabilityReader, keysetValidationMode KeysetValidationMode) (*sequencerMessage, error) {
+func parseSequencerMessage(ctx context.Context, batchNum uint64, data []byte, dasReader DataAvailabilityReader, celestiaReader celestia.DataAvailabilityReader, keysetValidationMode KeysetValidationMode) (*sequencerMessage, error) {
 	if len(data) < 40 {
 		return nil, errors.New("sequencer message missing L1 header")
 	}
@@ -70,6 +72,21 @@ func parseSequencerMessage(ctx context.Context, batchNum uint64, data []byte, da
 		} else {
 			var err error
 			payload, err = RecoverPayloadFromDasBatch(ctx, batchNum, data, dasReader, nil, keysetValidationMode)
+			if err != nil {
+				return nil, err
+			}
+			if payload == nil {
+				return parsedMsg, nil
+			}
+		}
+	}
+
+	if len(payload) > 0 && IsCelestiaMessageHeaderByte(payload[0]) {
+		if celestiaReader == nil {
+			log.Error("No Celestia Reader configured, but sequencer message found with Celestia header")
+		} else {
+			var err error
+			payload, err = RecoverPayloadFromCelestiaBatch(ctx, batchNum, data, celestiaReader, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -232,6 +249,94 @@ func RecoverPayloadFromDasBatch(
 	return payload, nil
 }
 
+func RecoverPayloadFromCelestiaBatch(
+	ctx context.Context,
+	batchNum uint64,
+	sequencerMsg []byte,
+	celestiaReader celestia.DataAvailabilityReader,
+	preimages map[arbutil.PreimageType]map[common.Hash][]byte,
+) ([]byte, error) {
+	var sha256Preimages map[common.Hash][]byte
+	if preimages != nil {
+		if preimages[arbutil.Sha2_256PreimageType] == nil {
+			preimages[arbutil.Sha2_256PreimageType] = make(map[common.Hash][]byte)
+		}
+		sha256Preimages = preimages[arbutil.Sha2_256PreimageType]
+	}
+
+	buf := bytes.NewBuffer(sequencerMsg[40:])
+
+	header, err := buf.ReadByte()
+	if err != nil {
+		log.Error("Couldn't deserialize Celestia header byte", "err", err)
+		return nil, nil
+	}
+	if !celestia.IsCelestiaMessageHeaderByte(header) {
+		log.Error("Couldn't deserialize Celestia header byte", "err", errors.New("tried to deserialize a message that doesn't have the Celestia header"))
+		return nil, nil
+	}
+
+	recordPreimage := func(key common.Hash, value []byte) {
+		sha256Preimages[key] = value
+	}
+
+	blobPointer := celestia.BlobPointer{}
+	blobBytes := buf.Bytes()
+	blobPointer.UnmarshalBinary(blobBytes)
+	if err != nil {
+		log.Error("Couldn't unmarshal Celestia blob pointer", "err", err)
+		return nil, nil
+	}
+
+	payload, squareData, err := celestiaReader.Read(ctx, &blobPointer)
+	if err != nil {
+		log.Error("Failed to resolve blob pointer from celestia", "err", err)
+		return nil, err
+	}
+
+	if sha256Preimages != nil {
+		if squareData == nil {
+			log.Error("squareData is nil, read from replay binary, but preimages are empty")
+			return nil, err
+		}
+
+		rowIndex := squareData.StartRow
+		squareSize := squareData.SquareSize
+		for _, row := range squareData.Rows {
+			// half of the squareSize for the EDS gives us the original length of the data
+			treeConstructor := tree.NewConstructor(recordPreimage, squareSize/2)
+			root, err := tree.ComputeNmtRoot(treeConstructor, uint(rowIndex), row)
+			if err != nil {
+				log.Error("Failed to compute row root", "err", err)
+				return nil, err
+			}
+
+			rowRootMatches := bytes.Equal(squareData.RowRoots[rowIndex], root)
+			if !rowRootMatches {
+				log.Error("Row roots do not match", "eds row root", squareData.RowRoots[rowIndex], "calculated", root)
+				log.Error("Row roots", "row_roots", squareData.RowRoots)
+				return nil, err
+			}
+			rowIndex += 1
+		}
+
+		rowsCount := len(squareData.RowRoots)
+		slices := make([][]byte, rowsCount+rowsCount)
+		copy(slices[0:rowsCount], squareData.RowRoots)
+		copy(slices[rowsCount:], squareData.ColumnRoots)
+
+		dataRoot := tree.HashFromByteSlices(recordPreimage, slices)
+
+		dataRootMatches := bytes.Equal(dataRoot, blobPointer.DataRoot[:])
+		if !dataRootMatches {
+			log.Error("Data Root do not match", "blobPointer data root", blobPointer.DataRoot, "calculated", dataRoot)
+			return nil, nil
+		}
+	}
+
+	return payload, nil
+}
+
 type KeysetValidationMode uint8
 
 const KeysetValidate KeysetValidationMode = 0
@@ -242,6 +347,7 @@ type inboxMultiplexer struct {
 	backend                   InboxBackend
 	delayedMessagesRead       uint64
 	dasReader                 DataAvailabilityReader
+	celestiaReader            celestia.DataAvailabilityReader
 	cachedSequencerMessage    *sequencerMessage
 	cachedSequencerMessageNum uint64
 	cachedSegmentNum          uint64
@@ -251,11 +357,12 @@ type inboxMultiplexer struct {
 	keysetValidationMode      KeysetValidationMode
 }
 
-func NewInboxMultiplexer(backend InboxBackend, delayedMessagesRead uint64, dasReader DataAvailabilityReader, keysetValidationMode KeysetValidationMode) arbostypes.InboxMultiplexer {
+func NewInboxMultiplexer(backend InboxBackend, delayedMessagesRead uint64, dasReader DataAvailabilityReader, celestiaReader celestia.DataAvailabilityReader, keysetValidationMode KeysetValidationMode) arbostypes.InboxMultiplexer {
 	return &inboxMultiplexer{
 		backend:              backend,
 		delayedMessagesRead:  delayedMessagesRead,
 		dasReader:            dasReader,
+		celestiaReader:       celestiaReader,
 		keysetValidationMode: keysetValidationMode,
 	}
 }
@@ -276,7 +383,7 @@ func (r *inboxMultiplexer) Pop(ctx context.Context) (*arbostypes.MessageWithMeta
 		}
 		r.cachedSequencerMessageNum = r.backend.GetSequencerInboxPosition()
 		var err error
-		r.cachedSequencerMessage, err = parseSequencerMessage(ctx, r.cachedSequencerMessageNum, bytes, r.dasReader, r.keysetValidationMode)
+		r.cachedSequencerMessage, err = parseSequencerMessage(ctx, r.cachedSequencerMessageNum, bytes, r.dasReader, r.celestiaReader, r.keysetValidationMode)
 		if err != nil {
 			return nil, err
 		}

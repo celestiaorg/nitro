@@ -133,15 +133,16 @@ func testBatchPosterParallel(t *testing.T, useRedis bool) {
 		batchPosterConfig := builder.nodeConfig.BatchPoster
 		batchPoster, err := arbnode.NewBatchPoster(ctx,
 			&arbnode.BatchPosterOpts{
-				DataPosterDB: nil,
-				L1Reader:     builder.L2.ConsensusNode.L1Reader,
-				Inbox:        builder.L2.ConsensusNode.InboxTracker,
-				Streamer:     builder.L2.ConsensusNode.TxStreamer,
-				SyncMonitor:  builder.L2.ConsensusNode.SyncMonitor,
-				Config:       func() *arbnode.BatchPosterConfig { return &batchPosterConfig },
-				DeployInfo:   builder.L2.ConsensusNode.DeployInfo,
-				TransactOpts: &seqTxOpts,
-				DAWriter:     nil,
+				DataPosterDB:   nil,
+				L1Reader:       builder.L2.ConsensusNode.L1Reader,
+				Inbox:          builder.L2.ConsensusNode.InboxTracker,
+				Streamer:       builder.L2.ConsensusNode.TxStreamer,
+				SyncMonitor:    builder.L2.ConsensusNode.SyncMonitor,
+				Config:         func() *arbnode.BatchPosterConfig { return &batchPosterConfig },
+				DeployInfo:     builder.L2.ConsensusNode.DeployInfo,
+				TransactOpts:   &seqTxOpts,
+				DAWriter:       nil,
+				CelestiaWriter: nil,
 			},
 		)
 		Require(t, err)

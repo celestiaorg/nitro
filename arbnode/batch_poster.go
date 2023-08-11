@@ -37,6 +37,7 @@ import (
 	"github.com/offchainlabs/nitro/cmd/chaininfo"
 	"github.com/offchainlabs/nitro/cmd/genericconf"
 	"github.com/offchainlabs/nitro/das"
+	"github.com/offchainlabs/nitro/das/celestia"
 	"github.com/offchainlabs/nitro/solgen/go/bridgegen"
 	"github.com/offchainlabs/nitro/util/arbmath"
 	"github.com/offchainlabs/nitro/util/headerreader"
@@ -71,6 +72,7 @@ type BatchPoster struct {
 	gasRefunderAddr     common.Address
 	building            *buildingBatch
 	daWriter            das.DataAvailabilityServiceWriter
+	celestiaWriter      celestia.DataAvailabilityWriter
 	dataPoster          *dataposter.DataPoster
 	redisLock           *redislock.Simple
 	firstEphemeralError time.Time // first time a continuous error suspected to be ephemeral occurred
@@ -100,8 +102,9 @@ const (
 )
 
 type BatchPosterConfig struct {
-	Enable                             bool `koanf:"enable"`
-	DisableDasFallbackStoreDataOnChain bool `koanf:"disable-das-fallback-store-data-on-chain" reload:"hot"`
+	Enable                                  bool `koanf:"enable"`
+	DisableDasFallbackStoreDataOnChain      bool `koanf:"disable-das-fallback-store-data-on-chain" reload:"hot"`
+	DisableCelestiaFallbackStoreDataOnChain bool `koanf:"disable-celestia-fallback-store-data-on-chain" reload:"hot"`
 	// Max batch size.
 	MaxSize int `koanf:"max-size" reload:"hot"`
 	// Max batch post delay.
@@ -219,15 +222,16 @@ var TestBatchPosterConfig = BatchPosterConfig{
 }
 
 type BatchPosterOpts struct {
-	DataPosterDB ethdb.Database
-	L1Reader     *headerreader.HeaderReader
-	Inbox        *InboxTracker
-	Streamer     *TransactionStreamer
-	SyncMonitor  *SyncMonitor
-	Config       BatchPosterConfigFetcher
-	DeployInfo   *chaininfo.RollupAddresses
-	TransactOpts *bind.TransactOpts
-	DAWriter     das.DataAvailabilityServiceWriter
+	DataPosterDB   ethdb.Database
+	L1Reader       *headerreader.HeaderReader
+	Inbox          *InboxTracker
+	Streamer       *TransactionStreamer
+	SyncMonitor    *SyncMonitor
+	Config         BatchPosterConfigFetcher
+	DeployInfo     *chaininfo.RollupAddresses
+	TransactOpts   *bind.TransactOpts
+	DAWriter       das.DataAvailabilityServiceWriter
+	CelestiaWriter celestia.DataAvailabilityWriter
 }
 
 func NewBatchPoster(ctx context.Context, opts *BatchPosterOpts) (*BatchPoster, error) {
@@ -272,6 +276,7 @@ func NewBatchPoster(ctx context.Context, opts *BatchPosterOpts) (*BatchPoster, e
 		gasRefunderAddr: opts.Config().gasRefunder,
 		bridgeAddr:      opts.DeployInfo.Bridge,
 		daWriter:        opts.DAWriter,
+		celestiaWriter:  opts.CelestiaWriter,
 		redisLock:       redisLock,
 	}
 	b.messagesPerBatch, err = arbmath.NewMovingAverage[uint64](20)
@@ -1033,6 +1038,21 @@ func (b *BatchPoster) maybePostSequencerBatch(ctx context.Context) (bool, error)
 		} else {
 			sequencerMsg = das.Serialize(cert)
 		}
+	}
+
+	// ideally we make this part of the above statment by having everything under a single unified interface (soon TM)
+	if b.daWriter == nil && b.celestiaWriter != nil {
+
+		celestiaMsg, err := b.celestiaWriter.Store(ctx, sequencerMsg)
+		if err != nil {
+			if config.DisableCelestiaFallbackStoreDataOnChain {
+				return false, errors.New("unable to post batch to Celestia and fallback storing data on chain is disabled")
+			}
+			log.Warn("Falling back to storing data on chain", "err", err)
+		} else {
+			sequencerMsg = celestiaMsg
+		}
+
 	}
 
 	data, err := b.encodeAddBatch(new(big.Int).SetUint64(batchPosition.NextSeqNum), batchPosition.MessageCount, b.building.msgCount, sequencerMsg, b.building.segments.delayedMsg)

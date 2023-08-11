@@ -193,6 +193,7 @@ func stakerTestImpl(t *testing.T, faultyStaker bool, honestStakerInactive bool) 
 		execNodeA,
 		l2nodeA.ArbDB,
 		nil,
+		nil,
 		StaticFetcherFrom(t, &blockValidatorConfig),
 		valStack,
 	)
@@ -233,6 +234,7 @@ func stakerTestImpl(t *testing.T, faultyStaker bool, honestStakerInactive bool) 
 		l2nodeB.TxStreamer,
 		execNodeB,
 		l2nodeB.ArbDB,
+		nil,
 		nil,
 		StaticFetcherFrom(t, &blockValidatorConfig),
 		valStack,

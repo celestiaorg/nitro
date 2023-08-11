@@ -32,6 +32,7 @@ import (
 	"github.com/offchainlabs/nitro/broadcaster"
 	"github.com/offchainlabs/nitro/cmd/chaininfo"
 	"github.com/offchainlabs/nitro/das"
+	"github.com/offchainlabs/nitro/das/celestia"
 	"github.com/offchainlabs/nitro/execution"
 	"github.com/offchainlabs/nitro/execution/gethexec"
 	"github.com/offchainlabs/nitro/solgen/go/bridgegen"
@@ -90,6 +91,7 @@ type Config struct {
 	TransactionStreamer TransactionStreamerConfig   `koanf:"transaction-streamer" reload:"hot"`
 	Maintenance         MaintenanceConfig           `koanf:"maintenance" reload:"hot"`
 	ResourceMgmt        resourcemanager.Config      `koanf:"resource-mgmt" reload:"hot"`
+	Celestia            celestia.DAConfig           `koanf:"celestia-cfg"`
 }
 
 func (c *Config) Validate() error {
@@ -484,6 +486,8 @@ func createNodeImpl(
 	var daWriter das.DataAvailabilityServiceWriter
 	var daReader das.DataAvailabilityServiceReader
 	var dasLifecycleManager *das.LifecycleManager
+	var celestiaReader celestia.DataAvailabilityReader
+	var celestiaWriter celestia.DataAvailabilityWriter
 	if config.DataAvailability.Enable {
 		if config.BatchPoster.Enable {
 			daWriter, daReader, dasLifecycleManager, err = das.CreateBatchPosterDAS(ctx, &config.DataAvailability, dataSigner, l1client, deployInfo.SequencerInbox)
@@ -507,9 +511,17 @@ func createNodeImpl(
 		}
 	} else if l2Config.ArbitrumChainParams.DataAvailabilityCommittee {
 		return nil, errors.New("a data availability service is required for this chain, but it was not configured")
+	} else if config.Celestia.Enable {
+		celestiaService, err := celestia.NewCelestiaDA(config.Celestia, l1client)
+		if err != nil {
+			return nil, err
+		}
+
+		celestiaReader = celestiaService
+		celestiaWriter = celestiaService
 	}
 
-	inboxTracker, err := NewInboxTracker(arbDb, txStreamer, daReader)
+	inboxTracker, err := NewInboxTracker(arbDb, txStreamer, daReader, celestiaReader)
 	if err != nil {
 		return nil, err
 	}
@@ -528,6 +540,7 @@ func createNodeImpl(
 			exec,
 			rawdb.NewTable(arbDb, storage.BlockValidatorPrefix),
 			daReader,
+			celestiaReader,
 			func() *staker.BlockValidatorConfig { return &configFetcher.Get().BlockValidator },
 			stack,
 		)
@@ -634,15 +647,16 @@ func createNodeImpl(
 			return nil, errors.New("batchposter, but no TxOpts")
 		}
 		batchPoster, err = NewBatchPoster(ctx, &BatchPosterOpts{
-			DataPosterDB: rawdb.NewTable(arbDb, storage.BatchPosterPrefix),
-			L1Reader:     l1Reader,
-			Inbox:        inboxTracker,
-			Streamer:     txStreamer,
-			SyncMonitor:  syncMonitor,
-			Config:       func() *BatchPosterConfig { return &configFetcher.Get().BatchPoster },
-			DeployInfo:   deployInfo,
-			TransactOpts: txOptsBatchPoster,
-			DAWriter:     daWriter,
+			DataPosterDB:   rawdb.NewTable(arbDb, storage.BatchPosterPrefix),
+			L1Reader:       l1Reader,
+			Inbox:          inboxTracker,
+			Streamer:       txStreamer,
+			SyncMonitor:    syncMonitor,
+			Config:         func() *BatchPosterConfig { return &configFetcher.Get().BatchPoster },
+			DeployInfo:     deployInfo,
+			TransactOpts:   txOptsBatchPoster,
+			DAWriter:       daWriter,
+			CelestiaWriter: celestiaWriter,
 		})
 		if err != nil {
 			return nil, err

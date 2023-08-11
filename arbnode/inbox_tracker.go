@@ -38,13 +38,15 @@ type InboxTracker struct {
 	mutex      sync.Mutex
 	validator  *staker.BlockValidator
 	das        arbstate.DataAvailabilityReader
+	celestia   arbstate.CelestiaDataAvailabilityReader
 
 	batchMetaMutex sync.Mutex
 	batchMeta      *containers.LruCache[uint64, BatchMetadata]
 }
 
-func NewInboxTracker(db ethdb.Database, txStreamer *TransactionStreamer, das arbstate.DataAvailabilityReader) (*InboxTracker, error) {
+func NewInboxTracker(db ethdb.Database, txStreamer *TransactionStreamer, das arbstate.DataAvailabilityReader, celestia arbstate.CelestiaDataAvailabilityReader) (*InboxTracker, error) {
 	// We support a nil txStreamer for the pruning code
+	// TODO (DIEGO) Might be good to also change the configs to just support a param for "DA Service"
 	if txStreamer != nil && txStreamer.chainConfig.ArbitrumChainParams.DataAvailabilityCommittee && das == nil {
 		return nil, errors.New("data availability service required but unconfigured")
 	}
@@ -52,6 +54,7 @@ func NewInboxTracker(db ethdb.Database, txStreamer *TransactionStreamer, das arb
 		db:         db,
 		txStreamer: txStreamer,
 		das:        das,
+		celestia:   celestia,
 		batchMeta:  containers.NewLruCache[uint64, BatchMetadata](1000),
 	}
 	return tracker, nil
@@ -603,7 +606,7 @@ func (t *InboxTracker) AddSequencerBatches(ctx context.Context, client arbutil.L
 		ctx:    ctx,
 		client: client,
 	}
-	multiplexer := arbstate.NewInboxMultiplexer(backend, prevbatchmeta.DelayedMessageCount, t.das, arbstate.KeysetValidate)
+	multiplexer := arbstate.NewInboxMultiplexer(backend, prevbatchmeta.DelayedMessageCount, t.das, t.celestia, arbstate.KeysetValidate)
 	batchMessageCounts := make(map[uint64]arbutil.MessageIndex)
 	currentpos := prevbatchmeta.MessageCount + 1
 	for {

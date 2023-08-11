@@ -102,6 +102,7 @@ func main() {
 	sequencerAddress := common.HexToAddress(*sequencerAddressString)
 	ownerAddress := common.HexToAddress(*ownerAddressString)
 	loserEscrowAddress := common.HexToAddress(*loserEscrowAddressString)
+
 	if sequencerAddress != (common.Address{}) && ownerAddress != l1TransactionOpts.From {
 		panic("cannot specify sequencer address if owner is not deployer")
 	}
