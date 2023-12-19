@@ -7,14 +7,15 @@ import (
 
 // BlobPointer contains the reference to the data blob on Celestia
 type BlobPointer struct {
-	BlockHeight  uint64
-	Start        uint64
-	SharesLength uint64
-	Key          uint64
-	NumLeaves    uint64
-	TxCommitment []byte
-	DataRoot     []byte
-	SideNodes    [][]byte
+	BlockHeight    uint64
+	Start          uint64
+	SharesLength   uint64
+	Key            uint64
+	NumLeaves      uint64
+	TupleRootNonce uint64
+	TxCommitment   [32]byte
+	DataRoot       [32]byte
+	SideNodes      [][32]byte
 }
 
 // MarshalBinary encodes the BlobPointer to binary
@@ -38,37 +39,29 @@ func (b *BlobPointer) MarshalBinary() ([]byte, error) {
 	if err := binary.Write(buf, binary.LittleEndian, b.NumLeaves); err != nil {
 		return nil, err
 	}
-
-	// Writing variable-size values
-	if err := writeBytes(buf, b.TxCommitment); err != nil {
-		return nil, err
-	}
-	if err := writeBytes(buf, b.DataRoot); err != nil {
+	if err := binary.Write(buf, binary.LittleEndian, b.TupleRootNonce); err != nil {
 		return nil, err
 	}
 
-	// Writing slice of slices
+	// Writing fixed-size byte arrays directly
+	if _, err := buf.Write(b.TxCommitment[:]); err != nil {
+		return nil, err
+	}
+	if _, err := buf.Write(b.DataRoot[:]); err != nil {
+		return nil, err
+	}
+
+	// Writing slice of fixed-size byte arrays
 	if err := binary.Write(buf, binary.LittleEndian, uint64(len(b.SideNodes))); err != nil {
 		return nil, err
 	}
 	for _, sideNode := range b.SideNodes {
-		if err := writeBytes(buf, sideNode); err != nil {
+		if _, err := buf.Write(sideNode[:]); err != nil {
 			return nil, err
 		}
 	}
 
 	return buf.Bytes(), nil
-}
-
-// writeBytes writes a length-prefixed byte slice to the buffer
-func writeBytes(buf *bytes.Buffer, data []byte) error {
-	if err := binary.Write(buf, binary.LittleEndian, uint64(len(data))); err != nil {
-		return err
-	}
-	if _, err := buf.Write(data); err != nil {
-		return err
-	}
-	return nil
 }
 
 // UnmarshalBinary decodes the binary to BlobPointer
@@ -92,24 +85,26 @@ func (b *BlobPointer) UnmarshalBinary(data []byte) error {
 	if err := binary.Read(buf, binary.LittleEndian, &b.NumLeaves); err != nil {
 		return err
 	}
-
-	// Reading variable-size values
-	var err error
-	if b.TxCommitment, err = readBytes(buf); err != nil {
-		return err
-	}
-	if b.DataRoot, err = readBytes(buf); err != nil {
+	if err := binary.Read(buf, binary.LittleEndian, &b.TupleRootNonce); err != nil {
 		return err
 	}
 
-	// Reading slice of slices
+	// Reading fixed-size byte arrays directly
+	if err := readFixedBytes(buf, b.TxCommitment[:]); err != nil {
+		return err
+	}
+	if err := readFixedBytes(buf, b.DataRoot[:]); err != nil {
+		return err
+	}
+
+	// Reading slice of fixed-size byte arrays
 	var sideNodesLen uint64
 	if err := binary.Read(buf, binary.LittleEndian, &sideNodesLen); err != nil {
 		return err
 	}
-	b.SideNodes = make([][]byte, sideNodesLen)
+	b.SideNodes = make([][32]byte, sideNodesLen)
 	for i := uint64(0); i < sideNodesLen; i++ {
-		if b.SideNodes[i], err = readBytes(buf); err != nil {
+		if err := readFixedBytes(buf, b.SideNodes[i][:]); err != nil {
 			return err
 		}
 	}
@@ -117,15 +112,10 @@ func (b *BlobPointer) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
-// readBytes reads a length-prefixed byte slice from the buffer
-func readBytes(buf *bytes.Reader) ([]byte, error) {
-	var length uint64
-	if err := binary.Read(buf, binary.LittleEndian, &length); err != nil {
-		return nil, err
-	}
-	data := make([]byte, length)
+// readFixedBytes reads a fixed number of bytes into a byte slice
+func readFixedBytes(buf *bytes.Reader, data []byte) error {
 	if _, err := buf.Read(data); err != nil {
-		return nil, err
+		return err
 	}
-	return data, nil
+	return nil
 }

@@ -287,13 +287,11 @@ func RecoverPayloadFromCelestiaBatch(
 		return nil, err
 	}
 
-	payload, squareData, err := celestiaReader.Read(ctx, blobPointer)
+	payload, squareData, err := celestiaReader.Read(ctx, &blobPointer)
 	if err != nil {
 		log.Error("Failed to resolve blob pointer from celestia", "err", err)
 		return nil, err
 	}
-
-	//log.Info("Succesfully fetched payload from Celestia", "batchNum", batchNum, "celestiaHeight", blobPointer.BlockHeight)
 
 	// check what we actually need from eds, make a new struct that can be filled given the preimages
 	if sha256Preimages != nil {
@@ -329,7 +327,7 @@ func RecoverPayloadFromCelestiaBatch(
 
 		dataRoot := tree.HashFromByteSlices(recordPreimage, slices)
 
-		dataRootMatches := bytes.Equal(dataRoot, blobPointer.DataRoot)
+		dataRootMatches := bytes.Equal(dataRoot, blobPointer.DataRoot[:])
 		if !dataRootMatches {
 			log.Error("Data Root do not match", "blobPointer data root", blobPointer.DataRoot, "calculated", dataRoot)
 			return nil, err

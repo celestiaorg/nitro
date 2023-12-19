@@ -12,7 +12,10 @@ import (
 	"strings"
 	"time"
 
+	bsmoduletypes "github.com/celestiaorg/celestia-app/x/qgb/types"
 	flag "github.com/spf13/pflag"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -488,6 +491,7 @@ func createNodeImpl(
 	var dasLifecycleManager *das.LifecycleManager
 	var celestiaReader celestia.DataAvailabilityReader
 	var celestiaWriter celestia.DataAvailabilityWriter
+	var bStreamClient bsmoduletypes.QueryClient
 	if config.DataAvailability.Enable {
 		if config.BatchPoster.Enable {
 			daWriter, daReader, dasLifecycleManager, err = das.CreateBatchPosterDAS(ctx, &config.DataAvailability, dataSigner, l1client, deployInfo.SequencerInbox)
@@ -512,13 +516,19 @@ func createNodeImpl(
 	} else if l2Config.ArbitrumChainParams.DataAvailabilityCommittee {
 		return nil, errors.New("a data availability service is required for this chain, but it was not configured")
 	} else if config.Celestia.Enable {
-		celestiaService, err := celestia.NewCelestiaDA(config.Celestia)
+		celestiaService, err := celestia.NewCelestiaDA(config.Celestia, l1client)
 		if err != nil {
 			return nil, err
 		}
 
 		celestiaReader = celestiaService
 		celestiaWriter = celestiaService
+
+		qgbGRPC, err := grpc.Dial(config.Celestia.AppGrpc, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			return nil, err
+		}
+		bStreamClient = bsmoduletypes.NewQueryClient(qgbGRPC)
 	}
 
 	// TODO (Diego) need to modify inbox tracker and inbox reader

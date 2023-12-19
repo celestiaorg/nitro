@@ -15,6 +15,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	bsmoduletypes "github.com/celestiaorg/celestia-app/x/qgb/types"
+
 	"github.com/andybalholm/brotli"
 	"github.com/spf13/pflag"
 
@@ -73,6 +75,7 @@ type BatchPoster struct {
 	building            *buildingBatch
 	daWriter            das.DataAvailabilityServiceWriter
 	celestiaWriter      celestia.DataAvailabilityWriter
+	bStreamClient       bsmoduletypes.QueryClient
 	dataPoster          *dataposter.DataPoster
 	redisLock           *redislock.Simple
 	firstEphemeralError time.Time // first time a continuous error suspected to be ephemeral occurred
@@ -102,8 +105,9 @@ const (
 )
 
 type BatchPosterConfig struct {
-	Enable                             bool `koanf:"enable"`
-	DisableDasFallbackStoreDataOnChain bool `koanf:"disable-das-fallback-store-data-on-chain" reload:"hot"`
+	Enable                                  bool `koanf:"enable"`
+	DisableDasFallbackStoreDataOnChain      bool `koanf:"disable-das-fallback-store-data-on-chain" reload:"hot"`
+	DisableCelestiaFallbackStoreDataOnChain bool `koanf:"disable-celestia-fallback-store-data-on-chain" reload:"hot"`
 	// Max batch size.
 	MaxSize int `koanf:"max-size" reload:"hot"`
 	// Max batch post delay.
@@ -1041,14 +1045,66 @@ func (b *BatchPoster) maybePostSequencerBatch(ctx context.Context) (bool, error)
 
 	// ideally we make this part of the above statment by having everything under a single unified interface (soon TM)
 	if b.daWriter == nil && b.celestiaWriter != nil {
-		// Store the data on Celestia and return a marhsalled BlobPointer, which gets used as the sequencerMsg
+		// Store the data on Celestia and return a BlobPointer,
+		// then add the tupleRootNonce, serialize it, and then
+		// use the serialized blob pointer as the sequencerMsg
 		// which is later used to retrieve the data from Celestia
 
-		// Need to verify inclusion into Blobstream using bsWrapper.VerifyAttestation
-		// deal with the "Incldued variable here"
-		sequencerMsg, _, err = b.celestiaWriter.Store(ctx, sequencerMsg)
+		blobPointer, included, err := b.celestiaWriter.Store(ctx, sequencerMsg)
 		if err != nil {
-			return false, err
+			if config.DisableCelestiaFallbackStoreDataOnChain {
+				return false, errors.New("unable to post batch to Celestia and fallback storing data on chain is disabled")
+			}
+			log.Warn("Falling back to storing data on chain", "err", err)
+		}
+
+		switch included {
+		case true:
+
+			celestiHeight := blobPointer.BlockHeight
+			log.Info("Celestia Tx included, waiting for block", "block", celestiHeight+150)
+			err := b.celestiaWriter.WaitForHeight(ctx, celestiHeight+150)
+			if err != nil {
+				log.Warn("Failed to wait for Celestia Height", "err", err)
+				break
+			}
+
+			resp, err := b.bStreamClient.DataCommitmentRangeForHeight(
+				ctx,
+				&bsmoduletypes.QueryDataCommitmentRangeForHeightRequest{Height: blobPointer.BlockHeight},
+			)
+			if err != nil {
+				break
+			}
+
+			log.Info("Tuple Root Nonce ", "tupleRootNonce", resp.DataCommitment.Nonce)
+
+			blobPointer.TupleRootNonce = resp.DataCommitment.Nonce
+
+			celestiaMsg, err := b.celestiaWriter.Serialize(blobPointer)
+			if err != nil {
+				log.Warn("Blob Pointer Serialization Error", "err", err)
+				break
+			}
+
+			valid, err := b.celestiaWriter.Verify(ctx, blobPointer)
+			if err != nil {
+				log.Warn("Attestation Verification Error", "err", err)
+				break
+			}
+
+			if valid {
+				log.Info("Attestation is valid", "valid", valid)
+				sequencerMsg = celestiaMsg
+			} else {
+				log.Info("Attestation is invalid", "valid", valid)
+				break
+			}
+		default:
+			if config.DisableCelestiaFallbackStoreDataOnChain {
+				return false, errors.New("unable to post batch to Celestia and fallback storing data on chain is disabled")
+			}
+			log.Warn("Falling back to storing data on chain", "err", err)
 		}
 	}
 

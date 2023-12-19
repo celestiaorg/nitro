@@ -5,10 +5,12 @@ import (
 )
 
 type DataAvailabilityWriter interface {
-	Store(context.Context, []byte) ([]byte, bool, error)
+	Store(context.Context, []byte) (*BlobPointer, bool, error)
+	WaitForHeight(context.Context, uint64) error
+	Verify(ctx context.Context, blobPointer *BlobPointer) (bool, error)
+	Serialize(blobPointer *BlobPointer) ([]byte, error)
 }
 
-// make output of read include eds or not
 type DataAvailabilityReader interface {
-	Read(context.Context, BlobPointer) ([]byte, *SquareData, error)
+	Read(context.Context, *BlobPointer) ([]byte, *SquareData, error)
 }

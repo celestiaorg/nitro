@@ -123,13 +123,13 @@ func (dasReader *PreimageDASReader) ExpirationPolicy(ctx context.Context) (arbst
 type PreimageCelestiaReader struct {
 }
 
-func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer celestia.BlobPointer) ([]byte, *celestia.SquareData, error) {
+func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *celestia.BlobPointer) ([]byte, *celestia.SquareData, error) {
 	oracle := func(hash common.Hash) ([]byte, error) {
 		return wavmio.ResolveTypedPreimage(arbutil.Sha2_256PreimageType, hash)
 	}
 
 	// first, walk down the merkle tree
-	leaves, err := tree.MerkleTreeContent(oracle, common.BytesToHash(blobPointer.DataRoot))
+	leaves, err := tree.MerkleTreeContent(oracle, common.BytesToHash(blobPointer.DataRoot[:]))
 	if err != nil {
 		log.Warn("Error revealing contents behind data root", "err", err)
 		return nil, nil, err
