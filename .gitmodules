@@ -19,5 +19,5 @@
 	url = https://github.com/WebAssembly/testsuite.git
 [submodule "nitro-testnode"]
 	path = nitro-testnode
-	url = https://github.com/celestiaorg/nitro-testnode.git
+	url = https://github.com/jcstein/nitro-testnode.git
 	branch = celestia
