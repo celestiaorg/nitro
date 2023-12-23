@@ -1062,7 +1062,6 @@ func (b *BatchPoster) maybePostSequencerBatch(ctx context.Context) (bool, error)
 		case true:
 
 			celestiHeight := blobPointer.BlockHeight
-			log.Info("Celestia Tx included, waiting for block", "block", celestiHeight+150)
 			err := b.celestiaWriter.WaitForHeight(ctx, celestiHeight+150)
 			if err != nil {
 				log.Warn("Failed to wait for Celestia Height", "err", err)
@@ -1077,9 +1076,13 @@ func (b *BatchPoster) maybePostSequencerBatch(ctx context.Context) (bool, error)
 				break
 			}
 
-			log.Info("Tuple Root Nonce ", "tupleRootNonce", resp.DataCommitment.Nonce)
-
 			blobPointer.TupleRootNonce = resp.DataCommitment.Nonce
+
+			valid, err := b.celestiaWriter.Verify(ctx, blobPointer, resp.DataCommitment.BeginBlock, resp.DataCommitment.EndBlock)
+			if err != nil {
+				log.Warn("Attestation Verification Error", "err", err)
+				break
+			}
 
 			celestiaMsg, err := b.celestiaWriter.Serialize(blobPointer)
 			if err != nil {
@@ -1087,17 +1090,9 @@ func (b *BatchPoster) maybePostSequencerBatch(ctx context.Context) (bool, error)
 				break
 			}
 
-			valid, err := b.celestiaWriter.Verify(ctx, blobPointer)
-			if err != nil {
-				log.Warn("Attestation Verification Error", "err", err)
-				break
-			}
-
 			if valid {
-				log.Info("Attestation is valid", "valid", valid)
 				sequencerMsg = celestiaMsg
 			} else {
-				log.Info("Attestation is invalid", "valid", valid)
 				break
 			}
 		default:

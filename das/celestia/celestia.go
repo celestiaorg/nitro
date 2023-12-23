@@ -144,38 +144,20 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) (*BlobPointer, b
 		sharesLength += uint64(proof.End()) - uint64(proof.Start())
 	}
 
-	// 2. Get tRPC interface and query /data_root_inclusion_proof
-	proof, err := c.Trpc.DataRootInclusionProof(ctx, height, height, height+1)
-	if err != nil {
-		log.Warn("DataRootInclusionProof error", "err", err)
-		return nil, included, err
-	}
-
-	if err != nil {
-		return nil, false, err
-	}
-
 	txCommitment, dataRoot := [32]byte{}, [32]byte{}
 	copy(txCommitment[:], commitment)
-	copy(dataRoot[:], header.DAH.Hash())
 
-	sideNodes := [][32]byte{}
-
-	for _, aunt := range proof.Proof.Aunts {
-		sideNode := [32]byte{}
-		copy(sideNode[:], aunt)
-		sideNodes = append(sideNodes, sideNode)
-	}
+	log.Info("Trying header.DataHash (Store)", "header.DataHash.Bytes()", header.DataHash)
+	copy(dataRoot[:], header.DataHash)
+	log.Info("Data root", "dataRoot", dataRoot)
+	log.Info("Commitment (Store)", "commitment", txCommitment)
 
 	blobPointer := BlobPointer{
 		BlockHeight:  height,
 		Start:        startIndex,
 		SharesLength: sharesLength,
-		Key:          uint64(proof.Proof.Index),
-		NumLeaves:    uint64(proof.Proof.Total),
 		TxCommitment: txCommitment,
 		DataRoot:     dataRoot,
-		SideNodes:    sideNodes,
 	}
 
 	return &blobPointer, included, nil
@@ -255,7 +237,23 @@ func (c *CelestiaDA) Read(ctx context.Context, blobPointer *BlobPointer) ([]byte
 	return blob.Data, &squareData, nil
 }
 
-func (c *CelestiaDA) Verify(ctx context.Context, blobPointer *BlobPointer) (bool, error) {
+func (c *CelestiaDA) Verify(ctx context.Context, blobPointer *BlobPointer, beginBlock uint64, endBlock uint64) (bool, error) {
+
+	// Get tRPC interface and query /data_root_inclusion_proof
+	inclusionProof, err := c.Trpc.DataRootInclusionProof(ctx, blobPointer.BlockHeight, beginBlock, endBlock)
+	if err != nil {
+		log.Warn("DataRootInclusionProof error", "err", err)
+		return false, err
+	}
+
+	sideNodes := make([][32]byte, len(inclusionProof.Proof.Aunts))
+	for i, aunt := range inclusionProof.Proof.Aunts {
+		sideNodes[i] = *(*[32]byte)(aunt)
+	}
+
+	blobPointer.Key = uint64(inclusionProof.Proof.Index)
+	blobPointer.NumLeaves = uint64(inclusionProof.Proof.Total)
+	blobPointer.SideNodes = sideNodes
 
 	tuple := wrapper.DataRootTuple{
 		Height:   big.NewInt(int64(blobPointer.BlockHeight)),
@@ -268,12 +266,18 @@ func (c *CelestiaDA) Verify(ctx context.Context, blobPointer *BlobPointer) (bool
 		NumLeaves: big.NewInt(int64(blobPointer.NumLeaves)),
 	}
 
-	log.Info("verifying that the data root was committed to in the Blobstream contract contract", "dataRoot", hex.EncodeToString(blobPointer.DataRoot[:]), "tupleRootNonce", blobPointer.TupleRootNonce)
+	for {
+		time.Sleep(time.Second * 5)
+		stateEventNonce, err := c.BlobstreamWrapper.StateEventNonce(&bind.CallOpts{})
+		if err != nil {
+			log.Info("Error querying state event nonce", "err", err)
+			return false, err
+		}
 
-	err := c.WaitForHeight(ctx, uint64(blobPointer.BlockHeight+150))
-	if err != nil {
-		log.Warn("Failed to wait for Celestia Height", "err", err)
-		return false, nil
+		nonce := stateEventNonce.Uint64()
+		if nonce > blobPointer.TupleRootNonce {
+			break
+		}
 	}
 
 	valid, err := c.BlobstreamWrapper.VerifyAttestation(
@@ -287,13 +291,10 @@ func (c *CelestiaDA) Verify(ctx context.Context, blobPointer *BlobPointer) (bool
 		return false, nil
 	}
 
-	log.Info("Attestation Status", "valid", valid)
-
 	return valid, nil
 }
 
 func (c *CelestiaDA) WaitForHeight(ctx context.Context, height uint64) error {
-	log.Info("Waiting for height", "height", height)
 	for {
 		// Sleep for 5 seconds
 		time.Sleep(time.Second * 5)
@@ -303,11 +304,8 @@ func (c *CelestiaDA) WaitForHeight(ctx context.Context, height uint64) error {
 		}
 
 		if networkHead.Height() >= height {
-			log.Info("Waited for height", "height", height, "networkHeight", networkHead.Height())
 			break
 		}
-		log.Info("Current Local Head Height", "height", networkHead.Height())
 	}
-
 	return nil
 }
