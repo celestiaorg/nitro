@@ -293,7 +293,6 @@ func RecoverPayloadFromCelestiaBatch(
 		return nil, err
 	}
 
-	// check what we actually need from eds, make a new struct that can be filled given the preimages
 	if sha256Preimages != nil {
 		if squareData == nil {
 			log.Error("squareData is nil, read from replay binary, but preimages are empty")

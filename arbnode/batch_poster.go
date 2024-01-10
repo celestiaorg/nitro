@@ -1062,7 +1062,7 @@ func (b *BatchPoster) maybePostSequencerBatch(ctx context.Context) (bool, error)
 		case true:
 
 			celestiHeight := blobPointer.BlockHeight
-			err := b.celestiaWriter.WaitForHeight(ctx, celestiHeight+150)
+			err := b.celestiaWriter.WaitForRelay(ctx, celestiHeight)
 			if err != nil {
 				log.Warn("Failed to wait for Celestia Height", "err", err)
 				break

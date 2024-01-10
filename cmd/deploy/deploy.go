@@ -96,8 +96,7 @@ func main() {
 	if !common.IsHexAddress(*ownerAddressString) {
 		panic("please specify a valid rollup owner address")
 	}
-	// NOTE (Diego) Change this to check if Celestia is configured for the l2
-	if !common.IsHexAddress(*blobstreamAddressString) {
+	if !common.IsHexAddress(*blobstreamAddressString) && len(*blobstreamAddressString) > 0 {
 		panic("please specify a valid Blobstream address")
 	}
 	if *prod && !common.IsHexAddress(*loserEscrowAddressString) {

@@ -46,7 +46,7 @@ type InboxTracker struct {
 
 func NewInboxTracker(db ethdb.Database, txStreamer *TransactionStreamer, das arbstate.DataAvailabilityReader, celestia arbstate.CelestiaDataAvailabilityReader) (*InboxTracker, error) {
 	// We support a nil txStreamer for the pruning code
-	// Might be good to also change the configs to just support a param for "DA Service"
+	// TODO (DIEGO) Might be good to also change the configs to just support a param for "DA Service"
 	if txStreamer != nil && txStreamer.chainConfig.ArbitrumChainParams.DataAvailabilityCommittee && das == nil {
 		return nil, errors.New("data availability service required but unconfigured")
 	}

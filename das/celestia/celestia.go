@@ -29,6 +29,7 @@ type DAConfig struct {
 	AuthToken         string `koanf:"auth-token"`
 	AppGrpc           string `koanf:"app-grpc"`
 	BlobstreamAddress string `koanf:"blobstream-address"`
+	BlockDrift        uint64 `koanf:"block-drift"`
 }
 
 // CelestiaMessageHeaderFlag indicates that this data is a Blob Pointer
@@ -39,7 +40,6 @@ func IsCelestiaMessageHeaderByte(header byte) bool {
 	return (CelestiaMessageHeaderFlag & header) > 0
 }
 
-// Add Tendermint RPC for Full node Endpoint
 type CelestiaDA struct {
 	Cfg               DAConfig
 	Client            *openrpc.Client
@@ -49,7 +49,6 @@ type CelestiaDA struct {
 }
 
 func NewCelestiaDA(cfg DAConfig, l1Interface arbutil.L1Interface) (*CelestiaDA, error) {
-	log.Info("Auth token in New Celestia DA", "token", cfg.AuthToken)
 	daClient, err := openrpc.NewClient(context.Background(), cfg.Rpc, cfg.AuthToken)
 	if err != nil {
 		return nil, err
@@ -81,6 +80,10 @@ func NewCelestiaDA(cfg DAConfig, l1Interface arbutil.L1Interface) (*CelestiaDA, 
 	bStreamWrapper, err := wrapper.NewWrappers(common.HexToAddress(cfg.BlobstreamAddress), l1Interface)
 	if err != nil {
 		return nil, err
+	}
+
+	if cfg.BlockDrift == 0 {
+		cfg.BlockDrift = 150
 	}
 
 	return &CelestiaDA{
@@ -115,8 +118,6 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) (*BlobPointer, b
 		return nil, false, errors.New("unexpected response code")
 	}
 
-	// how long do we have to wait to retrieve a proof?
-	//log.Info("Retrieving Proof from Celestia", "height", height, "commitment", commitment)
 	proofs, err := c.Client.Blob.GetProof(ctx, height, c.Namespace, commitment)
 	if err != nil {
 		log.Warn("Error retrieving proof", "err", err)
@@ -147,10 +148,7 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) (*BlobPointer, b
 	txCommitment, dataRoot := [32]byte{}, [32]byte{}
 	copy(txCommitment[:], commitment)
 
-	log.Info("Trying header.DataHash (Store)", "header.DataHash.Bytes()", header.DataHash)
 	copy(dataRoot[:], header.DataHash)
-	log.Info("Data root", "dataRoot", dataRoot)
-	log.Info("Commitment (Store)", "commitment", txCommitment)
 
 	blobPointer := BlobPointer{
 		BlockHeight:  height,
@@ -239,7 +237,6 @@ func (c *CelestiaDA) Read(ctx context.Context, blobPointer *BlobPointer) ([]byte
 
 func (c *CelestiaDA) Verify(ctx context.Context, blobPointer *BlobPointer, beginBlock uint64, endBlock uint64) (bool, error) {
 
-	// Get tRPC interface and query /data_root_inclusion_proof
 	inclusionProof, err := c.Trpc.DataRootInclusionProof(ctx, blobPointer.BlockHeight, beginBlock, endBlock)
 	if err != nil {
 		log.Warn("DataRootInclusionProof error", "err", err)
@@ -270,7 +267,7 @@ func (c *CelestiaDA) Verify(ctx context.Context, blobPointer *BlobPointer, begin
 		time.Sleep(time.Second * 5)
 		stateEventNonce, err := c.BlobstreamWrapper.StateEventNonce(&bind.CallOpts{})
 		if err != nil {
-			log.Info("Error querying state event nonce", "err", err)
+			log.Warn("Error querying state event nonce", "err", err)
 			return false, err
 		}
 
@@ -294,7 +291,10 @@ func (c *CelestiaDA) Verify(ctx context.Context, blobPointer *BlobPointer, begin
 	return valid, nil
 }
 
-func (c *CelestiaDA) WaitForHeight(ctx context.Context, height uint64) error {
+func (c *CelestiaDA) WaitForRelay(ctx context.Context, height uint64) error {
+	// "driftHeight" accounts for a certain number of Celestia blocks before we give up waiting
+	// for the relay to submit our expected data root to Blobstream
+	driftHeight := height + c.Cfg.BlockDrift
 	for {
 		// Sleep for 5 seconds
 		time.Sleep(time.Second * 5)
@@ -303,7 +303,7 @@ func (c *CelestiaDA) WaitForHeight(ctx context.Context, height uint64) error {
 			return err
 		}
 
-		if networkHead.Height() >= height {
+		if networkHead.Height() >= driftHeight {
 			break
 		}
 	}

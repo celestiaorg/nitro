@@ -531,7 +531,6 @@ func createNodeImpl(
 		bStreamClient = bsmoduletypes.NewQueryClient(qgbGRPC)
 	}
 
-	// TODO (Diego) need to modify inbox tracker and inbox reader
 	inboxTracker, err := NewInboxTracker(arbDb, txStreamer, daReader, celestiaReader)
 	if err != nil {
 		return nil, err
