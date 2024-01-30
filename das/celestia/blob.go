@@ -7,15 +7,15 @@ import (
 
 // BlobPointer contains the reference to the data blob on Celestia
 type BlobPointer struct {
-	BlockHeight    uint64
-	Start          uint64
-	SharesLength   uint64
-	Key            uint64
-	NumLeaves      uint64
-	TupleRootNonce uint64
-	TxCommitment   [32]byte
-	DataRoot       [32]byte
-	SideNodes      [][32]byte
+	BlockHeight  uint64
+	Start        uint64
+	SharesLength uint64
+	Key          uint64
+	NumLeaves    uint64
+	ProofNonce   uint64
+	TxCommitment [32]byte
+	DataRoot     [32]byte
+	SideNodes    [][32]byte
 }
 
 // MarshalBinary encodes the BlobPointer to binary
@@ -39,7 +39,7 @@ func (b *BlobPointer) MarshalBinary() ([]byte, error) {
 	if err := binary.Write(buf, binary.BigEndian, b.NumLeaves); err != nil {
 		return nil, err
 	}
-	if err := binary.Write(buf, binary.BigEndian, b.TupleRootNonce); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, b.ProofNonce); err != nil {
 		return nil, err
 	}
 
@@ -85,7 +85,7 @@ func (b *BlobPointer) UnmarshalBinary(data []byte) error {
 	if err := binary.Read(buf, binary.BigEndian, &b.NumLeaves); err != nil {
 		return err
 	}
-	if err := binary.Read(buf, binary.BigEndian, &b.TupleRootNonce); err != nil {
+	if err := binary.Read(buf, binary.BigEndian, &b.ProofNonce); err != nil {
 		return err
 	}
 

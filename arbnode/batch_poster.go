@@ -15,8 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	bsmoduletypes "github.com/celestiaorg/celestia-app/x/qgb/types"
-
 	"github.com/andybalholm/brotli"
 	"github.com/spf13/pflag"
 
@@ -75,7 +73,6 @@ type BatchPoster struct {
 	building            *buildingBatch
 	daWriter            das.DataAvailabilityServiceWriter
 	celestiaWriter      celestia.DataAvailabilityWriter
-	bStreamClient       bsmoduletypes.QueryClient
 	dataPoster          *dataposter.DataPoster
 	redisLock           *redislock.Simple
 	firstEphemeralError time.Time // first time a continuous error suspected to be ephemeral occurred
@@ -1060,37 +1057,19 @@ func (b *BatchPoster) maybePostSequencerBatch(ctx context.Context) (bool, error)
 
 		switch included {
 		case true:
-
-			celestiHeight := blobPointer.BlockHeight
-			err := b.celestiaWriter.WaitForRelay(ctx, celestiHeight)
-			if err != nil {
-				log.Warn("Failed to wait for Celestia Height", "err", err)
-				break
-			}
-
-			resp, err := b.bStreamClient.DataCommitmentRangeForHeight(
-				ctx,
-				&bsmoduletypes.QueryDataCommitmentRangeForHeightRequest{Height: blobPointer.BlockHeight},
-			)
-			if err != nil {
-				break
-			}
-
-			blobPointer.TupleRootNonce = resp.DataCommitment.Nonce
-
-			valid, err := b.celestiaWriter.Verify(ctx, blobPointer, resp.DataCommitment.BeginBlock, resp.DataCommitment.EndBlock)
+			valid, err := b.celestiaWriter.Verify(ctx, blobPointer)
 			if err != nil {
 				log.Warn("Attestation Verification Error", "err", err)
 				break
 			}
 
-			celestiaMsg, err := b.celestiaWriter.Serialize(blobPointer)
-			if err != nil {
-				log.Warn("Blob Pointer Serialization Error", "err", err)
-				break
-			}
-
 			if valid {
+				celestiaMsg, err := b.celestiaWriter.Serialize(blobPointer)
+				if err != nil {
+					log.Warn("Blob Pointer Serialization Error", "err", err)
+					break
+				}
+
 				sequencerMsg = celestiaMsg
 			} else {
 				break
