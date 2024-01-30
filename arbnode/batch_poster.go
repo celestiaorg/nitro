@@ -15,8 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	bsmoduletypes "github.com/celestiaorg/celestia-app/x/qgb/types"
-
 	"github.com/andybalholm/brotli"
 	"github.com/spf13/pflag"
 
@@ -72,7 +70,6 @@ type BatchPoster struct {
 	building            *buildingBatch
 	daWriter            das.DataAvailabilityServiceWriter
 	celestiaWriter      celestia.DataAvailabilityWriter
-	bStreamClient       bsmoduletypes.QueryClient
 	dataPoster          *dataposter.DataPoster
 	redisLock           *redislock.Simple
 	firstEphemeralError time.Time // first time a continuous error suspected to be ephemeral occurred
@@ -216,7 +213,7 @@ var TestBatchPosterConfig = BatchPosterConfig{
 	L1BlockBoundBypass: time.Hour,
 }
 
-func NewBatchPoster(ctx context.Context, dataPosterDB ethdb.Database, l1Reader *headerreader.HeaderReader, inbox *InboxTracker, streamer *TransactionStreamer, syncMonitor *SyncMonitor, config BatchPosterConfigFetcher, deployInfo *chaininfo.RollupAddresses, transactOpts *bind.TransactOpts, daWriter das.DataAvailabilityServiceWriter, celestiaWriter celestia.DataAvailabilityWriter, bStreamClient bsmoduletypes.QueryClient) (*BatchPoster, error) {
+func NewBatchPoster(ctx context.Context, dataPosterDB ethdb.Database, l1Reader *headerreader.HeaderReader, inbox *InboxTracker, streamer *TransactionStreamer, syncMonitor *SyncMonitor, config BatchPosterConfigFetcher, deployInfo *chaininfo.RollupAddresses, transactOpts *bind.TransactOpts, daWriter das.DataAvailabilityServiceWriter, celestiaWriter celestia.DataAvailabilityWriter) (*BatchPoster, error) {
 	seqInbox, err := bridgegen.NewSequencerInbox(deployInfo.SequencerInbox, l1Reader.Client())
 	if err != nil {
 		return nil, err
@@ -255,7 +252,6 @@ func NewBatchPoster(ctx context.Context, dataPosterDB ethdb.Database, l1Reader *
 		seqInboxAddr:   deployInfo.SequencerInbox,
 		daWriter:       daWriter,
 		celestiaWriter: celestiaWriter,
-		bStreamClient:  bStreamClient,
 		redisLock:      redisLock,
 	}
 	dataPosterConfigFetcher := func() *dataposter.DataPosterConfig {
@@ -918,37 +914,19 @@ func (b *BatchPoster) maybePostSequencerBatch(ctx context.Context) (bool, error)
 
 		switch included {
 		case true:
-
-			celestiHeight := blobPointer.BlockHeight
-			err := b.celestiaWriter.WaitForRelay(ctx, celestiHeight)
-			if err != nil {
-				log.Warn("Failed to wait for Celestia Height", "err", err)
-				break
-			}
-
-			resp, err := b.bStreamClient.DataCommitmentRangeForHeight(
-				ctx,
-				&bsmoduletypes.QueryDataCommitmentRangeForHeightRequest{Height: blobPointer.BlockHeight},
-			)
-			if err != nil {
-				break
-			}
-
-			blobPointer.TupleRootNonce = resp.DataCommitment.Nonce
-
-			valid, err := b.celestiaWriter.Verify(ctx, blobPointer, resp.DataCommitment.BeginBlock, resp.DataCommitment.EndBlock)
+			valid, err := b.celestiaWriter.Verify(ctx, blobPointer)
 			if err != nil {
 				log.Warn("Attestation Verification Error", "err", err)
 				break
 			}
 
-			celestiaMsg, err := b.celestiaWriter.Serialize(blobPointer)
-			if err != nil {
-				log.Warn("Blob Pointer Serialization Error", "err", err)
-				break
-			}
-
 			if valid {
+				celestiaMsg, err := b.celestiaWriter.Serialize(blobPointer)
+				if err != nil {
+					log.Warn("Blob Pointer Serialization Error", "err", err)
+					break
+				}
+
 				sequencerMsg = celestiaMsg
 			} else {
 				break

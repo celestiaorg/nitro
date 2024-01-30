@@ -7,10 +7,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"math/big"
-	"time"
 
 	"github.com/offchainlabs/nitro/arbutil"
-	wrapper "github.com/offchainlabs/nitro/das/celestia/wrapper"
+	blobstreamx "github.com/succinctlabs/blobstreamx/bindings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -22,14 +21,14 @@ import (
 )
 
 type DAConfig struct {
-	Enable            bool   `koanf:"enable"`
-	Rpc               string `koanf:"rpc"`
-	TendermintRPC     string `koanf:"tendermint-rpc"`
-	NamespaceId       string `koanf:"namespace-id"`
-	AuthToken         string `koanf:"auth-token"`
-	AppGrpc           string `koanf:"app-grpc"`
-	BlobstreamAddress string `koanf:"blobstream-address"`
-	BlockDrift        uint64 `koanf:"block-drift"`
+	Enable             bool   `koanf:"enable"`
+	Rpc                string `koanf:"rpc"`
+	TendermintRPC      string `koanf:"tendermint-rpc"`
+	NamespaceId        string `koanf:"namespace-id"`
+	AuthToken          string `koanf:"auth-token"`
+	AppGrpc            string `koanf:"app-grpc"`
+	BlobstreamXAddress string `koanf:"blobstreamx-address"`
+	BlockDrift         uint64 `koanf:"block-drift"`
 }
 
 // CelestiaMessageHeaderFlag indicates that this data is a Blob Pointer
@@ -41,11 +40,11 @@ func IsCelestiaMessageHeaderByte(header byte) bool {
 }
 
 type CelestiaDA struct {
-	Cfg               DAConfig
-	Client            *openrpc.Client
-	Trpc              *http.HTTP
-	Namespace         share.Namespace
-	BlobstreamWrapper *wrapper.Wrappers
+	Cfg         DAConfig
+	Client      *openrpc.Client
+	Trpc        *http.HTTP
+	Namespace   share.Namespace
+	BlobstreamX *blobstreamx.BlobstreamX
 }
 
 func NewCelestiaDA(cfg DAConfig, l1Interface arbutil.L1Interface) (*CelestiaDA, error) {
@@ -77,21 +76,21 @@ func NewCelestiaDA(cfg DAConfig, l1Interface arbutil.L1Interface) (*CelestiaDA, 
 		return nil, err
 	}
 
-	bStreamWrapper, err := wrapper.NewWrappers(common.HexToAddress(cfg.BlobstreamAddress), l1Interface)
+	blobstreamx, err := blobstreamx.NewBlobstreamX(common.HexToAddress(cfg.BlobstreamXAddress), l1Interface)
 	if err != nil {
 		return nil, err
 	}
 
 	if cfg.BlockDrift == 0 {
-		cfg.BlockDrift = 150
+		cfg.BlockDrift = 400
 	}
 
 	return &CelestiaDA{
-		Cfg:               cfg,
-		Client:            daClient,
-		Trpc:              trpc,
-		Namespace:         namespace,
-		BlobstreamWrapper: bStreamWrapper,
+		Cfg:         cfg,
+		Client:      daClient,
+		Trpc:        trpc,
+		Namespace:   namespace,
+		BlobstreamX: blobstreamx,
 	}, nil
 }
 
@@ -235,77 +234,72 @@ func (c *CelestiaDA) Read(ctx context.Context, blobPointer *BlobPointer) ([]byte
 	return blob.Data, &squareData, nil
 }
 
-func (c *CelestiaDA) Verify(ctx context.Context, blobPointer *BlobPointer, beginBlock uint64, endBlock uint64) (bool, error) {
+func (c *CelestiaDA) Verify(ctx context.Context, blobPointer *BlobPointer) (bool, error) {
 
-	inclusionProof, err := c.Trpc.DataRootInclusionProof(ctx, blobPointer.BlockHeight, beginBlock, endBlock)
-	if err != nil {
-		log.Warn("DataRootInclusionProof error", "err", err)
-		return false, err
-	}
-
-	sideNodes := make([][32]byte, len(inclusionProof.Proof.Aunts))
-	for i, aunt := range inclusionProof.Proof.Aunts {
-		sideNodes[i] = *(*[32]byte)(aunt)
-	}
-
-	blobPointer.Key = uint64(inclusionProof.Proof.Index)
-	blobPointer.NumLeaves = uint64(inclusionProof.Proof.Total)
-	blobPointer.SideNodes = sideNodes
-
-	tuple := wrapper.DataRootTuple{
-		Height:   big.NewInt(int64(blobPointer.BlockHeight)),
-		DataRoot: blobPointer.DataRoot,
-	}
-
-	proof := wrapper.BinaryMerkleProof{
-		SideNodes: blobPointer.SideNodes,
-		Key:       big.NewInt(int64(blobPointer.Key)),
-		NumLeaves: big.NewInt(int64(blobPointer.NumLeaves)),
-	}
-
-	for {
-		time.Sleep(time.Second * 5)
-		stateEventNonce, err := c.BlobstreamWrapper.StateEventNonce(&bind.CallOpts{})
-		if err != nil {
-			log.Warn("Error querying state event nonce", "err", err)
-			return false, err
-		}
-
-		nonce := stateEventNonce.Uint64()
-		if nonce > blobPointer.TupleRootNonce {
-			break
-		}
-	}
-
-	valid, err := c.BlobstreamWrapper.VerifyAttestation(
-		&bind.CallOpts{},
-		big.NewInt(int64(blobPointer.TupleRootNonce)),
-		tuple,
-		proof,
+	eventsChan := make(chan *blobstreamx.BlobstreamXDataCommitmentStored, 100)
+	subscription, err := c.BlobstreamX.WatchDataCommitmentStored(
+		&bind.WatchOpts{
+			Context: ctx,
+		},
+		eventsChan,
+		nil,
+		nil,
+		nil,
 	)
 	if err != nil {
-		log.Warn("Error verifying attestation", "err", err)
-		return false, nil
+		return false, err
 	}
+	defer subscription.Unsubscribe()
 
-	return valid, nil
-}
-
-func (c *CelestiaDA) WaitForRelay(ctx context.Context, height uint64) error {
-	// "driftHeight" accounts for a certain number of Celestia blocks before we give up waiting
-	// for the relay to submit our expected data root to Blobstream
-	driftHeight := height + c.Cfg.BlockDrift
 	for {
-		// Sleep for 5 seconds
-		time.Sleep(time.Second * 5)
-		networkHead, err := c.Client.Header.LocalHead(ctx)
-		if err != nil {
-			return err
-		}
+		select {
+		case <-ctx.Done():
+			return false, ctx.Err()
+		case err := <-subscription.Err():
+			return false, err
+		case event := <-eventsChan:
 
-		if networkHead.Height() >= driftHeight {
-			break
+			inclusionProof, err := c.Trpc.DataRootInclusionProof(ctx, blobPointer.BlockHeight, event.StartBlock, event.StartBlock)
+			if err != nil {
+				log.Warn("DataRootInclusionProof error", "err", err)
+				return false, err
+			}
+
+			sideNodes := make([][32]byte, len(inclusionProof.Proof.Aunts))
+			for i, aunt := range inclusionProof.Proof.Aunts {
+				sideNodes[i] = *(*[32]byte)(aunt)
+			}
+
+			blobPointer.Key = uint64(inclusionProof.Proof.Index)
+			blobPointer.NumLeaves = uint64(inclusionProof.Proof.Total)
+			blobPointer.SideNodes = sideNodes
+			blobPointer.ProofNonce = event.ProofNonce.Uint64()
+
+			tuple := blobstreamx.DataRootTuple{
+				Height:   big.NewInt(int64(blobPointer.BlockHeight)),
+				DataRoot: blobPointer.DataRoot,
+			}
+
+			proof := blobstreamx.BinaryMerkleProof{
+				SideNodes: blobPointer.SideNodes,
+				Key:       big.NewInt(int64(blobPointer.Key)),
+				NumLeaves: big.NewInt(int64(blobPointer.NumLeaves)),
+			}
+
+			valid, err := c.BlobstreamX.VerifyAttestation(
+				&bind.CallOpts{},
+				big.NewInt(event.ProofNonce.Int64()),
+				tuple,
+				proof,
+			)
+
+			if err != nil {
+				log.Warn("Error verifying attestation", "err", err)
+				return false, nil
+			}
+
+			return valid, nil
 		}
 	}
-	return nil
+
 }

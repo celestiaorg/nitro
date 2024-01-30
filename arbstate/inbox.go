@@ -269,10 +269,11 @@ func RecoverPayloadFromCelestiaBatch(
 	header, err := buf.ReadByte()
 	if err != nil {
 		log.Error("Couldn't deserialize Celestia header byte", "err", err)
-		return nil, err
+		return nil, nil
 	}
 	if !celestia.IsCelestiaMessageHeaderByte(header) {
-		return nil, errors.New("tried to deserialize a message that doesn't have the Celestia header")
+		log.Error("Couldn't deserialize Celestia header byte", "err", errors.New("tried to deserialize a message that doesn't have the Celestia header"))
+		return nil, nil
 	}
 
 	recordPreimage := func(key common.Hash, value []byte) {
@@ -284,7 +285,7 @@ func RecoverPayloadFromCelestiaBatch(
 	blobPointer.UnmarshalBinary(blobBytes)
 	if err != nil {
 		log.Error("Couldn't unmarshal Celestia blob pointer", "err", err)
-		return nil, err
+		return nil, nil
 	}
 
 	payload, squareData, err := celestiaReader.Read(ctx, &blobPointer)
@@ -329,7 +330,7 @@ func RecoverPayloadFromCelestiaBatch(
 		dataRootMatches := bytes.Equal(dataRoot, blobPointer.DataRoot[:])
 		if !dataRootMatches {
 			log.Error("Data Root do not match", "blobPointer data root", blobPointer.DataRoot, "calculated", dataRoot)
-			return nil, err
+			return nil, nil
 		}
 	}
 

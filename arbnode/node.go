@@ -12,10 +12,7 @@ import (
 	"strings"
 	"time"
 
-	bsmoduletypes "github.com/celestiaorg/celestia-app/x/qgb/types"
 	flag "github.com/spf13/pflag"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/arbitrum"
@@ -748,7 +745,6 @@ func createNodeImpl(
 	var dasLifecycleManager *das.LifecycleManager
 	var celestiaReader celestia.DataAvailabilityReader
 	var celestiaWriter celestia.DataAvailabilityWriter
-	var bStreamClient bsmoduletypes.QueryClient
 	if config.DataAvailability.Enable {
 		if config.BatchPoster.Enable {
 			daWriter, daReader, dasLifecycleManager, err = das.CreateBatchPosterDAS(ctx, &config.DataAvailability, dataSigner, l1client, deployInfo.SequencerInbox)
@@ -780,12 +776,6 @@ func createNodeImpl(
 
 		celestiaReader = celestiaService
 		celestiaWriter = celestiaService
-
-		qgbGRPC, err := grpc.Dial(config.Celestia.AppGrpc, grpc.WithTransportCredentials(insecure.NewCredentials()))
-		if err != nil {
-			return nil, err
-		}
-		bStreamClient = bsmoduletypes.NewQueryClient(qgbGRPC)
 	}
 
 	inboxTracker, err := NewInboxTracker(arbDb, txStreamer, daReader, celestiaReader)
@@ -913,7 +903,7 @@ func createNodeImpl(
 		if txOptsBatchPoster == nil {
 			return nil, errors.New("batchposter, but no TxOpts")
 		}
-		batchPoster, err = NewBatchPoster(ctx, rawdb.NewTable(arbDb, storage.BatchPosterPrefix), l1Reader, inboxTracker, txStreamer, syncMonitor, func() *BatchPosterConfig { return &configFetcher.Get().BatchPoster }, deployInfo, txOptsBatchPoster, daWriter, celestiaWriter, bStreamClient)
+		batchPoster, err = NewBatchPoster(ctx, rawdb.NewTable(arbDb, storage.BatchPosterPrefix), l1Reader, inboxTracker, txStreamer, syncMonitor, func() *BatchPosterConfig { return &configFetcher.Get().BatchPoster }, deployInfo, txOptsBatchPoster, daWriter, celestiaWriter)
 		if err != nil {
 			return nil, err
 		}
