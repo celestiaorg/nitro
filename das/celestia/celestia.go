@@ -104,18 +104,24 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, bool, e
 		return nil, included, err
 	}
 
+	// we fetch the blob so that we can get the correct start index in the square
+	blob, err := c.client.Blob.Get(ctx, height, c.namespace, commitment)
+	if err != nil {
+		return nil, false, err
+	}
+	if blob.Index <= 0 {
+		log.Warn("Unexpected index from blob response", "index", blob.Index)
+		return nil, false, errors.New("unexpected response code")
+	}
+
 	header, err := c.client.Header.GetByHeight(ctx, height)
 	if err != nil {
 		log.Warn("Header retrieval error", "err", err)
 		return nil, included, err
 	}
 
-	var startIndex uint64
 	sharesLength := uint64(0)
-	for i, proof := range *proofs {
-		if i == 0 {
-			startIndex = uint64(proof.Start())
-		}
+	for _, proof := range *proofs {
 		sharesLength += uint64(proof.End()) - uint64(proof.Start())
 	}
 
@@ -128,7 +134,7 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, bool, e
 
 	blobPointer := BlobPointer{
 		BlockHeight:  height,
-		Start:        startIndex,
+		Start:        uint64(blob.Index),
 		SharesLength: sharesLength,
 		Key:          uint64(proof.Proof.Index),
 		NumLeaves:    uint64(proof.Proof.Total),
