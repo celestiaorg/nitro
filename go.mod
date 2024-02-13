@@ -29,6 +29,7 @@ require (
 	github.com/gdamore/tcell/v2 v2.6.0
 	github.com/google/go-cmp v0.5.9
 	github.com/hashicorp/golang-lru/v2 v2.0.5
+	github.com/holiman/uint256 v1.2.3
 	github.com/ipfs/boxo v0.13.1
 	github.com/ipfs/go-cid v0.4.1
 	github.com/ipfs/go-libipfs v0.7.0
@@ -81,7 +82,7 @@ require (
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2 // indirect
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.0.2 // indirect
 	github.com/celestiaorg/go-fraud v0.2.0 // indirect
-	github.com/celestiaorg/go-header v0.4.0 // indirect
+	github.com/celestiaorg/go-header v0.4.1 // indirect
 	github.com/celestiaorg/merkletree v0.0.0-20210714075610-a84dc3ddbbe4 // indirect
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
 	github.com/ceramicnetwork/go-dag-jose v0.1.0 // indirect
@@ -354,5 +355,6 @@ require (
 replace (
 	github.com/cosmos/cosmos-sdk => github.com/celestiaorg/cosmos-sdk v1.18.3-sdk-v0.46.14
 	github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
+	github.com/rollkit/celestia-openrpc => github.com/Ferret-san/celestia-openrpc v0.3.1-0.20240207203921-c0e463fd020b
 	github.com/tendermint/tendermint => github.com/celestiaorg/celestia-core v1.29.0-tm-v0.34.29
 )
