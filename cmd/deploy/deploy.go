@@ -44,7 +44,6 @@ func main() {
 	nativeTokenAddressString := flag.String("nativeTokenAddress", "0x0000000000000000000000000000000000000000", "address of the ERC20 token which is used as native L2 currency")
 	maxDataSizeUint := flag.Uint64("maxDataSize", 117964, "maximum data size of a batch or a cross-chain message (default = 90% of Geth's 128KB tx size limit)")
 	loserEscrowAddressString := flag.String("loserEscrowAddress", "", "the address which half of challenge loser's funds accumulate at")
-	blobstreamAddressString := flag.String("blobstreamAddress", "", "the address for the Blobstream contract used to verify Celestia data roots")
 	wasmmoduleroot := flag.String("wasmmoduleroot", "", "WASM module root hash")
 	wasmrootpath := flag.String("wasmrootpath", "", "path to machine folders")
 	l1passphrase := flag.String("l1passphrase", "passphrase", "l1 private key file passphrase")
@@ -96,9 +95,6 @@ func main() {
 	if !common.IsHexAddress(*ownerAddressString) {
 		panic("please specify a valid rollup owner address")
 	}
-	if !common.IsHexAddress(*blobstreamAddressString) && len(*blobstreamAddressString) > 0 {
-		panic("please specify a valid Blobstream address")
-	}
 	if *prod && !common.IsHexAddress(*loserEscrowAddressString) {
 		panic("please specify a valid loser escrow address")
 	}
@@ -106,7 +102,7 @@ func main() {
 	sequencerAddress := common.HexToAddress(*sequencerAddressString)
 	ownerAddress := common.HexToAddress(*ownerAddressString)
 	loserEscrowAddress := common.HexToAddress(*loserEscrowAddressString)
-	blobstreamAddress := common.HexToAddress(*blobstreamAddressString)
+
 	if sequencerAddress != (common.Address{}) && ownerAddress != l1TransactionOpts.From {
 		panic("cannot specify sequencer address if owner is not deployer")
 	}
