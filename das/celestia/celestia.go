@@ -7,10 +7,10 @@ import (
 	"encoding/hex"
 	"errors"
 
+	openrpc "github.com/celestiaorg/celestia-openrpc"
+	"github.com/celestiaorg/celestia-openrpc/types/blob"
+	"github.com/celestiaorg/celestia-openrpc/types/share"
 	"github.com/ethereum/go-ethereum/log"
-	openrpc "github.com/rollkit/celestia-openrpc"
-	"github.com/rollkit/celestia-openrpc/types/blob"
-	"github.com/rollkit/celestia-openrpc/types/share"
 	"github.com/tendermint/tendermint/rpc/client/http"
 )
 
@@ -49,14 +49,17 @@ func NewCelestiaDA(cfg DAConfig) (*CelestiaDA, error) {
 		return nil, err
 	}
 
-	trpc, err := http.New(cfg.TendermintRPC, "/websocket")
-	if err != nil {
-		log.Error("Unable to establish connection with celestia-core tendermint rpc")
-		return nil, err
-	}
-	err = trpc.Start()
-	if err != nil {
-		return nil, err
+	var trpc *http.HTTP
+	if cfg.IsPoster {
+		trpc, err = http.New(cfg.TendermintRPC, "/websocket")
+		if err != nil {
+			log.Error("Unable to establish connection with celestia-core tendermint rpc")
+			return nil, err
+		}
+		err = trpc.Start()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &CelestiaDA{
@@ -80,7 +83,8 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, bool, e
 		log.Warn("Error creating commitment", "err", err)
 		return nil, false, err
 	}
-	height, err := c.client.Blob.Submit(ctx, []*blob.Blob{dataBlob}, openrpc.DefaultSubmitOptions())
+
+	height, err := c.client.Blob.Submit(ctx, []*blob.Blob{dataBlob}, 0.3)
 	if err != nil {
 		log.Warn("Blob Submission error", "err", err)
 		return nil, false, err
@@ -90,8 +94,6 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, bool, e
 		return nil, false, errors.New("unexpected response code")
 	}
 
-	// how long do we have to wait to retrieve a proof?
-	//log.Info("Retrieving Proof from Celestia", "height", height, "commitment", commitment)
 	proofs, err := c.client.Blob.GetProof(ctx, height, c.namespace, commitment)
 	if err != nil {
 		log.Warn("Error retrieving proof", "err", err)
@@ -126,6 +128,7 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, bool, e
 	}
 
 	// 2. Get tRPC interface and query /data_root_inclusion_proof
+	log.Info("Retrieving Data Root Inclusion Proof", "height", height, "commitment", commitment)
 	proof, err := c.trpc.DataRootInclusionProof(ctx, height, height, height+1)
 	if err != nil {
 		log.Warn("DataRootInclusionProof error", "err", err)
@@ -183,6 +186,7 @@ func (c *CelestiaDA) Read(ctx context.Context, blobPointer BlobPointer) ([]byte,
 	if err != nil {
 		return nil, nil, err
 	}
+	log.Info("Read blob for height", "height", blobPointer.BlockHeight, "blob", blob.Data)
 
 	header, err := c.client.Header.GetByHeight(ctx, blobPointer.BlockHeight)
 	if err != nil {
@@ -196,8 +200,10 @@ func (c *CelestiaDA) Read(ctx context.Context, blobPointer BlobPointer) ([]byte,
 
 	squareSize := uint64(eds.Width())
 	odsSquareSize := squareSize / 2
-	startRow := blobPointer.Start / odsSquareSize
-	endRow := (blobPointer.Start + blobPointer.SharesLength) / odsSquareSize
+
+	startRow := blobPointer.Start / squareSize
+
+	endRow := (blobPointer.Start + blobPointer.SharesLength + odsSquareSize) / squareSize
 
 	rows := [][][]byte{}
 	for i := startRow; i <= endRow; i++ {

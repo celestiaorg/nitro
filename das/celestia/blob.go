@@ -23,19 +23,19 @@ func (b *BlobPointer) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
 
 	// Writing fixed-size values
-	if err := binary.Write(buf, binary.LittleEndian, b.BlockHeight); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, b.BlockHeight); err != nil {
 		return nil, err
 	}
-	if err := binary.Write(buf, binary.LittleEndian, b.Start); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, b.Start); err != nil {
 		return nil, err
 	}
-	if err := binary.Write(buf, binary.LittleEndian, b.SharesLength); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, b.SharesLength); err != nil {
 		return nil, err
 	}
-	if err := binary.Write(buf, binary.LittleEndian, b.Key); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, b.Key); err != nil {
 		return nil, err
 	}
-	if err := binary.Write(buf, binary.LittleEndian, b.NumLeaves); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, b.NumLeaves); err != nil {
 		return nil, err
 	}
 
@@ -48,7 +48,7 @@ func (b *BlobPointer) MarshalBinary() ([]byte, error) {
 	}
 
 	// Writing slice of slices
-	if err := binary.Write(buf, binary.LittleEndian, uint64(len(b.SideNodes))); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, uint64(len(b.SideNodes))); err != nil {
 		return nil, err
 	}
 	for _, sideNode := range b.SideNodes {
@@ -62,7 +62,7 @@ func (b *BlobPointer) MarshalBinary() ([]byte, error) {
 
 // writeBytes writes a length-prefixed byte slice to the buffer
 func writeBytes(buf *bytes.Buffer, data []byte) error {
-	if err := binary.Write(buf, binary.LittleEndian, uint64(len(data))); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, uint64(len(data))); err != nil {
 		return err
 	}
 	if _, err := buf.Write(data); err != nil {
@@ -77,19 +77,19 @@ func (b *BlobPointer) UnmarshalBinary(data []byte) error {
 	buf := bytes.NewReader(data)
 
 	// Reading fixed-size values
-	if err := binary.Read(buf, binary.LittleEndian, &b.BlockHeight); err != nil {
+	if err := binary.Read(buf, binary.BigEndian, &b.BlockHeight); err != nil {
 		return err
 	}
-	if err := binary.Read(buf, binary.LittleEndian, &b.Start); err != nil {
+	if err := binary.Read(buf, binary.BigEndian, &b.Start); err != nil {
 		return err
 	}
-	if err := binary.Read(buf, binary.LittleEndian, &b.SharesLength); err != nil {
+	if err := binary.Read(buf, binary.BigEndian, &b.SharesLength); err != nil {
 		return err
 	}
-	if err := binary.Read(buf, binary.LittleEndian, &b.Key); err != nil {
+	if err := binary.Read(buf, binary.BigEndian, &b.Key); err != nil {
 		return err
 	}
-	if err := binary.Read(buf, binary.LittleEndian, &b.NumLeaves); err != nil {
+	if err := binary.Read(buf, binary.BigEndian, &b.NumLeaves); err != nil {
 		return err
 	}
 
@@ -104,7 +104,7 @@ func (b *BlobPointer) UnmarshalBinary(data []byte) error {
 
 	// Reading slice of slices
 	var sideNodesLen uint64
-	if err := binary.Read(buf, binary.LittleEndian, &sideNodesLen); err != nil {
+	if err := binary.Read(buf, binary.BigEndian, &sideNodesLen); err != nil {
 		return err
 	}
 	b.SideNodes = make([][]byte, sideNodesLen)
@@ -120,7 +120,7 @@ func (b *BlobPointer) UnmarshalBinary(data []byte) error {
 // readBytes reads a length-prefixed byte slice from the buffer
 func readBytes(buf *bytes.Reader) ([]byte, error) {
 	var length uint64
-	if err := binary.Read(buf, binary.LittleEndian, &length); err != nil {
+	if err := binary.Read(buf, binary.BigEndian, &length); err != nil {
 		return nil, err
 	}
 	data := make([]byte, length)
