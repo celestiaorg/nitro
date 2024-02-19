@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -142,12 +143,13 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 	// We geth the original data square size, wich is (size_of_the_extended_square / 2)
 	odsSize := squareSize / 2
 
-	startRow := blobPointer.Start / odsSize
-	endRow := (blobPointer.Start + blobPointer.SharesLength) / odsSize
+	startRow := blobPointer.Start / squareSize
+	endRow := (blobPointer.Start + blobPointer.SharesLength + odsSize) / squareSize
 
-	startIndex := (blobPointer.Start - (odsSize * (startRow)))
+	startIndex := (blobPointer.Start - (squareSize * (startRow)))
 
-	endIndex := (blobPointer.Start + blobPointer.SharesLength) - (odsSize * (endRow))
+	// might need a minus 1 or something here
+	endIndex := (blobPointer.Start + blobPointer.SharesLength + odsSize) - (squareSize * (endRow))
 
 	// get rows behind row root and shares for our blob
 	rows := [][][]byte{}
@@ -157,22 +159,32 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 		if err != nil {
 			return nil, nil, err
 		}
+		// we only want to have the rows for the ods
 		rows = append(rows, row)
 
+		odsRow := row[odsSize:]
+
 		if startRow == endRow {
-			shares = append(shares, row[startIndex:endIndex]...)
+			shares = append(shares, odsRow[startIndex:endIndex]...)
+			break
 		} else if i == startRow {
-			shares = append(shares, row[startIndex:odsSize]...)
+			shares = append(shares, odsRow[startIndex:odsSize]...)
 		} else if i == endRow {
-			shares = append(shares, row[:endIndex]...)
+			shares = append(shares, odsRow[:endIndex]...)
 		} else {
-			shares = append(shares, row[:odsSize]...)
+			shares = append(shares, odsRow[:odsSize]...)
 		}
 	}
 
 	data := []byte{}
-	sequenceLength := binary.BigEndian.Uint32(shares[0][tree.NamespaceSize*2+1 : tree.NamespaceSize*2+5])
+	var sequenceLength uint32
 	for i, share := range shares {
+		if i == 0 && bytes.Equal(share[tree.NamespaceSize*2:tree.NamespaceSize*2+1], []byte{0x01}) {
+			sequenceLength = binary.BigEndian.Uint32(share[tree.NamespaceSize*2+1 : tree.NamespaceSize*2+5])
+		} else {
+			log.Warn("Got start index for non sequencer starting share", "err", err.Error())
+			return nil, nil, errors.New("starting index was not the start of a sequence")
+		}
 		// trim extra namespace
 		share := share[29:]
 		if i == 0 {
@@ -180,10 +192,8 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 			continue
 		}
 		data = append(data, share[tree.NamespaceSize+1:]...)
-
 	}
 
-	// TODO return Square Data
 	data = data[:sequenceLength]
 	squareData := celestia.SquareData{
 		RowRoots:    rowRoots,

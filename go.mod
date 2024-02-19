@@ -18,6 +18,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.11.10
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.26.9
 	github.com/cavaliergopher/grab/v3 v3.0.1
+	github.com/celestiaorg/celestia-openrpc v0.3.1-0.20240214152243-eea73bdb149f
 	github.com/celestiaorg/nmt v0.20.0
 	github.com/celestiaorg/rsmt2d v0.11.0
 	github.com/cockroachdb/pebble v0.0.0-20230209160836-829675f94811
@@ -356,5 +357,6 @@ replace (
 	github.com/cosmos/cosmos-sdk => github.com/celestiaorg/cosmos-sdk v1.18.3-sdk-v0.46.14
 	github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
 	github.com/rollkit/celestia-openrpc => github.com/Ferret-san/celestia-openrpc v0.3.1-0.20240207203921-c0e463fd020b
+	github.com/celestiaorg/celestia-openrpc => github.com/Ferret-san/celestia-openrpc v0.3.1-0.20240214162835-bb3b93c214a5
 	github.com/tendermint/tendermint => github.com/celestiaorg/celestia-core v1.29.0-tm-v0.34.29
 )

@@ -11,17 +11,18 @@ import (
 	"github.com/offchainlabs/nitro/arbutil"
 	blobstreamx "github.com/succinctlabs/blobstreamx/bindings"
 
+	openrpc "github.com/celestiaorg/celestia-openrpc"
+	"github.com/celestiaorg/celestia-openrpc/types/blob"
+	"github.com/celestiaorg/celestia-openrpc/types/share"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
-	openrpc "github.com/rollkit/celestia-openrpc"
-	"github.com/rollkit/celestia-openrpc/types/blob"
-	"github.com/rollkit/celestia-openrpc/types/share"
 	"github.com/tendermint/tendermint/rpc/client/http"
 )
 
 type DAConfig struct {
 	Enable             bool   `koanf:"enable"`
+	IsPoster           bool   `koanf:"isPoster"`
 	Rpc                string `koanf:"rpc"`
 	TendermintRPC      string `koanf:"tendermint-rpc"`
 	NamespaceId        string `koanf:"namespace-id"`
@@ -66,14 +67,17 @@ func NewCelestiaDA(cfg DAConfig, l1Interface arbutil.L1Interface) (*CelestiaDA, 
 		return nil, err
 	}
 
-	trpc, err := http.New(cfg.TendermintRPC, "/websocket")
-	if err != nil {
-		log.Error("Unable to establish connection with celestia-core tendermint rpc")
-		return nil, err
-	}
-	err = trpc.Start()
-	if err != nil {
-		return nil, err
+	var trpc *http.HTTP
+	if cfg.IsPoster {
+		trpc, err = http.New(cfg.TendermintRPC, "/websocket")
+		if err != nil {
+			log.Error("Unable to establish connection with celestia-core tendermint rpc")
+			return nil, err
+		}
+		err = trpc.Start()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	blobstreamx, err := blobstreamx.NewBlobstreamX(common.HexToAddress(cfg.BlobstreamXAddress), l1Interface)
@@ -107,7 +111,8 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) (*BlobPointer, b
 		log.Warn("Error creating commitment", "err", err)
 		return nil, false, err
 	}
-	height, err := c.Client.Blob.Submit(ctx, []*blob.Blob{dataBlob}, openrpc.DefaultSubmitOptions())
+
+	height, err := c.client.Blob.Submit(ctx, []*blob.Blob{dataBlob}, 0.3)
 	if err != nil {
 		log.Warn("Blob Submission error", "err", err)
 		return nil, false, err
@@ -207,6 +212,7 @@ func (c *CelestiaDA) Read(ctx context.Context, blobPointer *BlobPointer) ([]byte
 	if err != nil {
 		return nil, nil, err
 	}
+	log.Info("Read blob for height", "height", blobPointer.BlockHeight, "blob", blob.Data)
 
 	header, err := c.Client.Header.GetByHeight(ctx, blobPointer.BlockHeight)
 	if err != nil {
@@ -220,8 +226,10 @@ func (c *CelestiaDA) Read(ctx context.Context, blobPointer *BlobPointer) ([]byte
 
 	squareSize := uint64(eds.Width())
 	odsSquareSize := squareSize / 2
-	startRow := blobPointer.Start / odsSquareSize
-	endRow := (blobPointer.Start + blobPointer.SharesLength) / odsSquareSize
+
+	startRow := blobPointer.Start / squareSize
+
+	endRow := (blobPointer.Start + blobPointer.SharesLength + odsSquareSize) / squareSize
 
 	rows := [][][]byte{}
 	for i := startRow; i <= endRow; i++ {
