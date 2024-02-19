@@ -112,7 +112,7 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) (*BlobPointer, b
 		return nil, false, err
 	}
 
-	height, err := c.client.Blob.Submit(ctx, []*blob.Blob{dataBlob}, 0.3)
+	height, err := c.Client.Blob.Submit(ctx, []*blob.Blob{dataBlob}, 0.3)
 	if err != nil {
 		log.Warn("Blob Submission error", "err", err)
 		return nil, false, err
@@ -135,7 +135,7 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) (*BlobPointer, b
 	}
 
 	// we fetch the blob so that we can get the correct start index in the square
-	blob, err := c.client.Blob.Get(ctx, height, c.namespace, commitment)
+	blob, err := c.Client.Blob.Get(ctx, height, c.Namespace, commitment)
 	if err != nil {
 		return nil, false, err
 	}
@@ -144,7 +144,7 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) (*BlobPointer, b
 		return nil, false, errors.New("unexpected response code")
 	}
 
-	header, err := c.client.Header.GetByHeight(ctx, height)
+	header, err := c.Client.Header.GetByHeight(ctx, height)
 	if err != nil {
 		log.Warn("Header retrieval error", "err", err)
 		return nil, included, err
