@@ -1042,44 +1042,17 @@ func (b *BatchPoster) maybePostSequencerBatch(ctx context.Context) (bool, error)
 
 	// ideally we make this part of the above statment by having everything under a single unified interface (soon TM)
 	if b.daWriter == nil && b.celestiaWriter != nil {
-		// Store the data on Celestia and return a BlobPointer,
-		// then add the tupleRootNonce, serialize it, and then
-		// use the serialized blob pointer as the sequencerMsg
-		// which is later used to retrieve the data from Celestia
 
-		blobPointer, included, err := b.celestiaWriter.Store(ctx, sequencerMsg)
+		celestiaMsg, err := b.celestiaWriter.Store(ctx, sequencerMsg)
 		if err != nil {
 			if config.DisableCelestiaFallbackStoreDataOnChain {
 				return false, errors.New("unable to post batch to Celestia and fallback storing data on chain is disabled")
 			}
 			log.Warn("Falling back to storing data on chain", "err", err)
+		} else {
+			sequencerMsg = celestiaMsg
 		}
 
-		switch included {
-		case true:
-			valid, err := b.celestiaWriter.Verify(ctx, blobPointer)
-			if err != nil {
-				log.Warn("Attestation Verification Error", "err", err)
-				break
-			}
-
-			if valid {
-				celestiaMsg, err := b.celestiaWriter.Serialize(blobPointer)
-				if err != nil {
-					log.Warn("Blob Pointer Serialization Error", "err", err)
-					break
-				}
-
-				sequencerMsg = celestiaMsg
-			} else {
-				break
-			}
-		default:
-			if config.DisableCelestiaFallbackStoreDataOnChain {
-				return false, errors.New("unable to post batch to Celestia and fallback storing data on chain is disabled")
-			}
-			log.Warn("Falling back to storing data on chain", "err", err)
-		}
 	}
 
 	data, err := b.encodeAddBatch(new(big.Int).SetUint64(batchPosition.NextSeqNum), batchPosition.MessageCount, b.building.msgCount, sequencerMsg, b.building.segments.delayedMsg)

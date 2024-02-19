@@ -5,9 +5,7 @@ import (
 )
 
 type DataAvailabilityWriter interface {
-	Store(context.Context, []byte) (*BlobPointer, bool, error)
-	Verify(ctx context.Context, blobPointer *BlobPointer) (bool, error)
-	Serialize(blobPointer *BlobPointer) ([]byte, error)
+	Store(context.Context, []byte) ([]byte, error)
 }
 
 type DataAvailabilityReader interface {

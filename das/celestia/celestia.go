@@ -21,15 +21,16 @@ import (
 )
 
 type DAConfig struct {
-	Enable             bool   `koanf:"enable"`
-	IsPoster           bool   `koanf:"isPoster"`
-	Rpc                string `koanf:"rpc"`
-	TendermintRPC      string `koanf:"tendermint-rpc"`
-	NamespaceId        string `koanf:"namespace-id"`
-	AuthToken          string `koanf:"auth-token"`
-	AppGrpc            string `koanf:"app-grpc"`
-	BlobstreamXAddress string `koanf:"blobstreamx-address"`
-	BlockDrift         uint64 `koanf:"block-drift"`
+	Enable             bool    `koanf:"enable"`
+	IsPoster           bool    `koanf:"is-poster"`
+	GasPrice           float64 `koanf:"gas-price"`
+	Rpc                string  `koanf:"rpc"`
+	TendermintRPC      string  `koanf:"tendermint-rpc"`
+	NamespaceId        string  `koanf:"namespace-id"`
+	AuthToken          string  `koanf:"auth-token"`
+	AppGrpc            string  `koanf:"app-grpc"`
+	BlobstreamXAddress string  `koanf:"blobstreamx-address"`
+	EventChannelSize   uint64  `koanf:"event-channel-size"`
 }
 
 // CelestiaMessageHeaderFlag indicates that this data is a Blob Pointer
@@ -85,8 +86,8 @@ func NewCelestiaDA(cfg DAConfig, l1Interface arbutil.L1Interface) (*CelestiaDA, 
 		return nil, err
 	}
 
-	if cfg.BlockDrift == 0 {
-		cfg.BlockDrift = 400
+	if cfg.EventChannelSize == 0 {
+		cfg.EventChannelSize = 100
 	}
 
 	return &CelestiaDA{
@@ -98,56 +99,56 @@ func NewCelestiaDA(cfg DAConfig, l1Interface arbutil.L1Interface) (*CelestiaDA, 
 	}, nil
 }
 
-func (c *CelestiaDA) Store(ctx context.Context, message []byte) (*BlobPointer, bool, error) {
+func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, error) {
 
 	dataBlob, err := blob.NewBlobV0(c.Namespace, message)
 	if err != nil {
 		log.Warn("Error creating blob", "err", err)
-		return nil, false, err
+		return nil, err
 	}
 
 	commitment, err := blob.CreateCommitment(dataBlob)
 	if err != nil {
 		log.Warn("Error creating commitment", "err", err)
-		return nil, false, err
+		return nil, err
 	}
 
-	height, err := c.Client.Blob.Submit(ctx, []*blob.Blob{dataBlob}, 0.3)
+	height, err := c.Client.Blob.Submit(ctx, []*blob.Blob{dataBlob}, openrpc.GasPrice(c.Cfg.GasPrice))
 	if err != nil {
 		log.Warn("Blob Submission error", "err", err)
-		return nil, false, err
+		return nil, err
 	}
 	if height == 0 {
 		log.Warn("Unexpected height from blob response", "height", height)
-		return nil, false, errors.New("unexpected response code")
+		return nil, errors.New("unexpected response code")
 	}
 
 	proofs, err := c.Client.Blob.GetProof(ctx, height, c.Namespace, commitment)
 	if err != nil {
 		log.Warn("Error retrieving proof", "err", err)
-		return nil, false, err
+		return nil, err
 	}
 
 	included, err := c.Client.Blob.Included(ctx, height, c.Namespace, proofs, commitment)
-	if err != nil {
+	if err != nil || !included {
 		log.Warn("Error checking for inclusion", "err", err, "proof", proofs)
-		return nil, included, err
+		return nil, err
 	}
 
 	// we fetch the blob so that we can get the correct start index in the square
 	blob, err := c.Client.Blob.Get(ctx, height, c.Namespace, commitment)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	if blob.Index <= 0 {
 		log.Warn("Unexpected index from blob response", "index", blob.Index)
-		return nil, false, errors.New("unexpected response code")
+		return nil, errors.New("unexpected response code")
 	}
 
 	header, err := c.Client.Header.GetByHeight(ctx, height)
 	if err != nil {
 		log.Warn("Header retrieval error", "err", err)
-		return nil, included, err
+		return nil, err
 	}
 
 	sharesLength := uint64(0)
@@ -168,11 +169,6 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) (*BlobPointer, b
 		DataRoot:     dataRoot,
 	}
 
-	return &blobPointer, included, nil
-
-}
-
-func (c *CelestiaDA) Serialize(blobPointer *BlobPointer) ([]byte, error) {
 	blobPointerData, err := blobPointer.MarshalBinary()
 	if err != nil {
 		log.Warn("BlobPointer MashalBinary error", "err", err)
@@ -194,7 +190,71 @@ func (c *CelestiaDA) Serialize(blobPointer *BlobPointer) ([]byte, error) {
 
 	serializedBlobPointerData := buf.Bytes()
 	log.Trace("celestia.CelestiaDA.Store", "serialized_blob_pointer", serializedBlobPointerData)
-	return serializedBlobPointerData, nil
+
+	eventsChan := make(chan *blobstreamx.BlobstreamXDataCommitmentStored, c.Cfg.EventChannelSize)
+	subscription, err := c.BlobstreamX.WatchDataCommitmentStored(
+		&bind.WatchOpts{
+			Context: ctx,
+		},
+		eventsChan,
+		nil,
+		nil,
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer subscription.Unsubscribe()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case err := <-subscription.Err():
+			return nil, err
+		case event := <-eventsChan:
+
+			inclusionProof, err := c.Trpc.DataRootInclusionProof(ctx, blobPointer.BlockHeight, event.StartBlock, event.StartBlock)
+			if err != nil {
+				log.Warn("DataRootInclusionProof error", "err", err)
+				return nil, err
+			}
+
+			sideNodes := make([][32]byte, len(inclusionProof.Proof.Aunts))
+			for i, aunt := range inclusionProof.Proof.Aunts {
+				sideNodes[i] = *(*[32]byte)(aunt)
+			}
+
+			blobPointer.Key = uint64(inclusionProof.Proof.Index)
+			blobPointer.NumLeaves = uint64(inclusionProof.Proof.Total)
+			blobPointer.SideNodes = sideNodes
+			blobPointer.ProofNonce = event.ProofNonce.Uint64()
+
+			tuple := blobstreamx.DataRootTuple{
+				Height:   big.NewInt(int64(blobPointer.BlockHeight)),
+				DataRoot: blobPointer.DataRoot,
+			}
+
+			proof := blobstreamx.BinaryMerkleProof{
+				SideNodes: blobPointer.SideNodes,
+				Key:       big.NewInt(int64(blobPointer.Key)),
+				NumLeaves: big.NewInt(int64(blobPointer.NumLeaves)),
+			}
+
+			valid, err := c.BlobstreamX.VerifyAttestation(
+				&bind.CallOpts{},
+				big.NewInt(event.ProofNonce.Int64()),
+				tuple,
+				proof,
+			)
+			if err != nil || !valid {
+				log.Warn("Error verifying attestation", "err", err)
+				return nil, err
+			}
+
+			return serializedBlobPointerData, nil
+		}
+	}
 }
 
 type SquareData struct {
@@ -246,74 +306,4 @@ func (c *CelestiaDA) Read(ctx context.Context, blobPointer *BlobPointer) ([]byte
 	}
 
 	return blob.Data, &squareData, nil
-}
-
-func (c *CelestiaDA) Verify(ctx context.Context, blobPointer *BlobPointer) (bool, error) {
-
-	eventsChan := make(chan *blobstreamx.BlobstreamXDataCommitmentStored, 100)
-	subscription, err := c.BlobstreamX.WatchDataCommitmentStored(
-		&bind.WatchOpts{
-			Context: ctx,
-		},
-		eventsChan,
-		nil,
-		nil,
-		nil,
-	)
-	if err != nil {
-		return false, err
-	}
-	defer subscription.Unsubscribe()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return false, ctx.Err()
-		case err := <-subscription.Err():
-			return false, err
-		case event := <-eventsChan:
-
-			inclusionProof, err := c.Trpc.DataRootInclusionProof(ctx, blobPointer.BlockHeight, event.StartBlock, event.StartBlock)
-			if err != nil {
-				log.Warn("DataRootInclusionProof error", "err", err)
-				return false, err
-			}
-
-			sideNodes := make([][32]byte, len(inclusionProof.Proof.Aunts))
-			for i, aunt := range inclusionProof.Proof.Aunts {
-				sideNodes[i] = *(*[32]byte)(aunt)
-			}
-
-			blobPointer.Key = uint64(inclusionProof.Proof.Index)
-			blobPointer.NumLeaves = uint64(inclusionProof.Proof.Total)
-			blobPointer.SideNodes = sideNodes
-			blobPointer.ProofNonce = event.ProofNonce.Uint64()
-
-			tuple := blobstreamx.DataRootTuple{
-				Height:   big.NewInt(int64(blobPointer.BlockHeight)),
-				DataRoot: blobPointer.DataRoot,
-			}
-
-			proof := blobstreamx.BinaryMerkleProof{
-				SideNodes: blobPointer.SideNodes,
-				Key:       big.NewInt(int64(blobPointer.Key)),
-				NumLeaves: big.NewInt(int64(blobPointer.NumLeaves)),
-			}
-
-			valid, err := c.BlobstreamX.VerifyAttestation(
-				&bind.CallOpts{},
-				big.NewInt(event.ProofNonce.Int64()),
-				tuple,
-				proof,
-			)
-
-			if err != nil {
-				log.Warn("Error verifying attestation", "err", err)
-				return false, nil
-			}
-
-			return valid, nil
-		}
-	}
-
 }
