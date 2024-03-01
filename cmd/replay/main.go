@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 
@@ -139,17 +138,19 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer c
 	squareSize := uint64(len(leaves)) / 2
 	// split leaves in half to get row roots
 	rowRoots := leaves[:squareSize]
-
 	// We geth the original data square size, wich is (size_of_the_extended_square / 2)
 	odsSize := squareSize / 2
 
 	startRow := blobPointer.Start / squareSize
+
 	endRow := (blobPointer.Start + blobPointer.SharesLength + odsSize) / squareSize
 
-	startIndex := (blobPointer.Start - (squareSize * (startRow)))
+	startIndex := blobPointer.Start % squareSize
 
-	// might need a minus 1 or something here
-	endIndex := (blobPointer.Start + blobPointer.SharesLength + odsSize) - (squareSize * (endRow))
+	endIndex := (blobPointer.Start + blobPointer.SharesLength) % squareSize
+	if endIndex >= odsSize {
+		endIndex -= odsSize
+	}
 
 	// get rows behind row root and shares for our blob
 	rows := [][][]byte{}
@@ -162,29 +163,23 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer c
 		// we only want to have the rows for the ods
 		rows = append(rows, row)
 
-		odsRow := row[odsSize:]
+		odsRow := row[:odsSize]
 
 		if startRow == endRow {
 			shares = append(shares, odsRow[startIndex:endIndex]...)
 			break
 		} else if i == startRow {
-			shares = append(shares, odsRow[startIndex:odsSize]...)
+			shares = append(shares, odsRow[startIndex:]...)
 		} else if i == endRow {
 			shares = append(shares, odsRow[:endIndex]...)
 		} else {
-			shares = append(shares, odsRow[:odsSize]...)
+			shares = append(shares, odsRow...)
 		}
 	}
 
 	data := []byte{}
-	var sequenceLength uint32
+	sequenceLength := binary.BigEndian.Uint32(shares[0][tree.NamespaceSize*2+1 : tree.NamespaceSize*2+5])
 	for i, share := range shares {
-		if i == 0 && bytes.Equal(share[tree.NamespaceSize*2:tree.NamespaceSize*2+1], []byte{0x01}) {
-			sequenceLength = binary.BigEndian.Uint32(share[tree.NamespaceSize*2+1 : tree.NamespaceSize*2+5])
-		} else {
-			log.Warn("Got start index for non sequencer starting share", "err", err.Error())
-			return nil, nil, errors.New("starting index was not the start of a sequence")
-		}
 		// trim extra namespace
 		share := share[29:]
 		if i == 0 {

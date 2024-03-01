@@ -2,7 +2,7 @@ package celestia
 
 type DAConfig struct {
 	Enable        bool   `koanf:"enable"`
-	IsPoster      bool   `koanf:"enable"`
+	IsPoster      bool   `koanf:"is-poster"`
 	Rpc           string `koanf:"rpc"`
 	TendermintRPC string `koanf:"tendermint-rpc"`
 	NamespaceId   string `koanf:"namespace-id"`
