@@ -28,7 +28,6 @@ type DAConfig struct {
 	TendermintRPC      string  `koanf:"tendermint-rpc"`
 	NamespaceId        string  `koanf:"namespace-id"`
 	AuthToken          string  `koanf:"auth-token"`
-	AppGrpc            string  `koanf:"app-grpc"`
 	BlobstreamXAddress string  `koanf:"blobstreamx-address"`
 	EventChannelSize   uint64  `koanf:"event-channel-size"`
 }
@@ -134,6 +133,7 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, error) 
 		log.Warn("Error checking for inclusion", "err", err, "proof", proofs)
 		return nil, err
 	}
+	log.Info("Succesfully posted blob", "height", height, "commitment", hex.EncodeToString(commitment))
 
 	// we fetch the blob so that we can get the correct start index in the square
 	blob, err := c.Client.Blob.Get(ctx, height, c.Namespace, commitment)
@@ -213,7 +213,7 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, error) 
 		case err := <-subscription.Err():
 			return nil, err
 		case event := <-eventsChan:
-
+			log.Info("Found Data Root submission event", "proof_nonce", event.ProofNonce)
 			inclusionProof, err := c.Trpc.DataRootInclusionProof(ctx, blobPointer.BlockHeight, event.StartBlock, event.StartBlock)
 			if err != nil {
 				log.Warn("DataRootInclusionProof error", "err", err)
