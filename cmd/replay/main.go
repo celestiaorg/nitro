@@ -138,20 +138,46 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 	squareSize := uint64(len(leaves)) / 2
 	// split leaves in half to get row roots
 	rowRoots := leaves[:squareSize]
-	// We geth the original data square size, wich is (size_of_the_extended_square / 2)
+	// We get the original data square size, wich is (size_of_the_extended_square / 2)
 	odsSize := squareSize / 2
 
 	startRow := blobPointer.Start / squareSize
 
-	endRow := (blobPointer.Start + blobPointer.SharesLength + odsSize) / squareSize
-
 	startIndex := blobPointer.Start % squareSize
 
-	endIndex := (blobPointer.Start + blobPointer.SharesLength) % squareSize
-	if endIndex >= odsSize {
-		endIndex -= odsSize
-	}
+	firtsRowShares := odsSize - startIndex
+	var endIndex uint64
+	var endRow uint64
+	var remainingShares uint64
+	var rowsNeeded uint64
+	if blobPointer.SharesLength <= firtsRowShares {
+		endIndex = blobPointer.Start + blobPointer.SharesLength - 1
+		endRow = startRow
+	} else {
+		remainingShares = blobPointer.SharesLength - firtsRowShares
+		rowsNeeded = remainingShares / odsSize
+		endRow = startRow + rowsNeeded + func() uint64 {
+			if remainingShares%odsSize > 0 {
+				return 1
+			} else {
+				return 0
+			}
+		}()
+		partialRow := func() bool {
+			if blobPointer.SharesLength%squareSize > 0 {
+				return true
+			} else {
+				return false
+			}
+		}()
 
+		if partialRow {
+			endIndex = endRow*odsSize + (remainingShares%odsSize - 1)
+		} else {
+			endIndex = (endRow * odsSize) - 1
+		}
+	}
+	endIndex = endIndex % squareSize
 	// get rows behind row root and shares for our blob
 	rows := [][][]byte{}
 	shares := [][]byte{}
@@ -160,18 +186,17 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 		if err != nil {
 			return nil, nil, err
 		}
-		// we only want to have the rows for the ods
 		rows = append(rows, row)
 
 		odsRow := row[:odsSize]
 
 		if startRow == endRow {
-			shares = append(shares, odsRow[startIndex:endIndex]...)
+			shares = append(shares, odsRow[startIndex:endIndex+1]...)
 			break
 		} else if i == startRow {
 			shares = append(shares, odsRow[startIndex:]...)
 		} else if i == endRow {
-			shares = append(shares, odsRow[:endIndex]...)
+			shares = append(shares, odsRow[:endIndex+1]...)
 		} else {
 			shares = append(shares, odsRow...)
 		}

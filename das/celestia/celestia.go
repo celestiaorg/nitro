@@ -213,46 +213,48 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, error) 
 		case err := <-subscription.Err():
 			return nil, err
 		case event := <-eventsChan:
-			log.Info("Found Data Root submission event", "proof_nonce", event.ProofNonce)
-			inclusionProof, err := c.Trpc.DataRootInclusionProof(ctx, blobPointer.BlockHeight, event.StartBlock, event.StartBlock)
-			if err != nil {
-				log.Warn("DataRootInclusionProof error", "err", err)
-				return nil, err
+			log.Info("Found Data Root submission event", "proof_nonce", event.ProofNonce, "start", event.StartBlock, "end", event.EndBlock)
+			if blobPointer.BlockHeight >= event.StartBlock && event.EndBlock > blobPointer.BlockHeight {
+				inclusionProof, err := c.Trpc.DataRootInclusionProof(ctx, blobPointer.BlockHeight, event.StartBlock, event.EndBlock)
+				if err != nil {
+					log.Warn("DataRootInclusionProof error", "err", err)
+					return nil, err
+				}
+
+				sideNodes := make([][32]byte, len(inclusionProof.Proof.Aunts))
+				for i, aunt := range inclusionProof.Proof.Aunts {
+					sideNodes[i] = *(*[32]byte)(aunt)
+				}
+
+				blobPointer.Key = uint64(inclusionProof.Proof.Index)
+				blobPointer.NumLeaves = uint64(inclusionProof.Proof.Total)
+				blobPointer.SideNodes = sideNodes
+				blobPointer.ProofNonce = event.ProofNonce.Uint64()
+
+				tuple := blobstreamx.DataRootTuple{
+					Height:   big.NewInt(int64(blobPointer.BlockHeight)),
+					DataRoot: blobPointer.DataRoot,
+				}
+
+				proof := blobstreamx.BinaryMerkleProof{
+					SideNodes: blobPointer.SideNodes,
+					Key:       big.NewInt(int64(blobPointer.Key)),
+					NumLeaves: big.NewInt(int64(blobPointer.NumLeaves)),
+				}
+
+				valid, err := c.BlobstreamX.VerifyAttestation(
+					&bind.CallOpts{},
+					big.NewInt(event.ProofNonce.Int64()),
+					tuple,
+					proof,
+				)
+				if err != nil || !valid {
+					log.Warn("Error verifying attestation", "err", err)
+					return nil, err
+				}
+
+				return serializedBlobPointerData, nil
 			}
-
-			sideNodes := make([][32]byte, len(inclusionProof.Proof.Aunts))
-			for i, aunt := range inclusionProof.Proof.Aunts {
-				sideNodes[i] = *(*[32]byte)(aunt)
-			}
-
-			blobPointer.Key = uint64(inclusionProof.Proof.Index)
-			blobPointer.NumLeaves = uint64(inclusionProof.Proof.Total)
-			blobPointer.SideNodes = sideNodes
-			blobPointer.ProofNonce = event.ProofNonce.Uint64()
-
-			tuple := blobstreamx.DataRootTuple{
-				Height:   big.NewInt(int64(blobPointer.BlockHeight)),
-				DataRoot: blobPointer.DataRoot,
-			}
-
-			proof := blobstreamx.BinaryMerkleProof{
-				SideNodes: blobPointer.SideNodes,
-				Key:       big.NewInt(int64(blobPointer.Key)),
-				NumLeaves: big.NewInt(int64(blobPointer.NumLeaves)),
-			}
-
-			valid, err := c.BlobstreamX.VerifyAttestation(
-				&bind.CallOpts{},
-				big.NewInt(event.ProofNonce.Int64()),
-				tuple,
-				proof,
-			)
-			if err != nil || !valid {
-				log.Warn("Error verifying attestation", "err", err)
-				return nil, err
-			}
-
-			return serializedBlobPointerData, nil
 		}
 	}
 }
@@ -285,15 +287,37 @@ func (c *CelestiaDA) Read(ctx context.Context, blobPointer *BlobPointer) ([]byte
 	}
 
 	squareSize := uint64(eds.Width())
-	odsSquareSize := squareSize / 2
+	odsSize := squareSize / 2
 
 	startRow := blobPointer.Start / squareSize
-
-	endRow := (blobPointer.Start + blobPointer.SharesLength + odsSquareSize) / squareSize
+	startCol := blobPointer.Start % squareSize
+	firtsRowShares := odsSize - startCol
+	// Quick maths in case we span multiple rows
+	var endRow uint64
+	var remainingShares uint64
+	var rowsNeeded uint64
+	if blobPointer.SharesLength <= firtsRowShares {
+		endRow = startRow
+	} else {
+		remainingShares = blobPointer.SharesLength - firtsRowShares
+		rowsNeeded = remainingShares / odsSize
+		endRow = startRow + rowsNeeded + func() uint64 {
+			if remainingShares%odsSize > 0 {
+				return 1
+			} else {
+				return 0
+			}
+		}()
+	}
 
 	rows := [][][]byte{}
 	for i := startRow; i <= endRow; i++ {
 		rows = append(rows, eds.Row(uint(i)))
+	}
+
+	printRows := [][][]byte{}
+	for i := 0; i < int(squareSize); i++ {
+		printRows = append(printRows, eds.Row(uint(i)))
 	}
 
 	squareData := SquareData{

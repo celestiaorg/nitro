@@ -354,6 +354,5 @@ require (
 replace (
 	github.com/celestiaorg/celestia-openrpc => github.com/Ferret-san/celestia-openrpc v0.3.1-0.20240214162835-bb3b93c214a5
 	github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
-	github.com/rollkit/celestia-openrpc => github.com/Ferret-san/celestia-openrpc v0.3.1-0.20240207203921-c0e463fd020b
 	github.com/tendermint/tendermint => github.com/celestiaorg/celestia-core v1.29.0-tm-v0.34.29
 )
