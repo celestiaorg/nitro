@@ -175,15 +175,27 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 
 	startIndex := blobPointer.Start % squareSize
 
+	if startIndex > odsSize {
+		return nil, nil, fmt.Errorf("Error getting number of shares in first row: StartIndex %v > OdsSize %v", startIndex, odsSize)
+	}
 	firtsRowShares := odsSize - startIndex
+
+	if blobPointer.SharesLength == 0 {
+		return nil, nil, fmt.Errorf("Error, shares length is %v", blobPointer.SharesLength)
+	}
+
 	var endIndex uint64
 	var endRow uint64
 	var remainingShares uint64
 	var rowsNeeded uint64
+
 	if blobPointer.SharesLength <= firtsRowShares {
 		endIndex = blobPointer.Start + blobPointer.SharesLength - 1
 		endRow = startRow
 	} else {
+		if firtsRowShares > blobPointer.SharesLength {
+			return nil, nil, fmt.Errorf("Error, shares in first row %v is larger than total share length %v", firtsRowShares, blobPointer.SharesLength)
+		}
 		remainingShares = blobPointer.SharesLength - firtsRowShares
 		rowsNeeded = remainingShares / odsSize
 		endRow = startRow + rowsNeeded + func() uint64 {
@@ -202,12 +214,26 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 		}()
 
 		if partialRow {
+			if remainingShares%odsSize < 1 {
+				return nil, nil, fmt.Errorf("Error calculating index for partial row remainingShares mod odsSize is %v, which is less than 1", remainingShares%odsSize)
+			}
 			endIndex = endRow*odsSize + (remainingShares%odsSize - 1)
 		} else {
+			if (endRow * odsSize) < 1 {
+				return nil, nil, fmt.Errorf("Error, endRow * odszie is %v, which is less than 1", endRow*odsSize)
+			}
 			endIndex = (endRow * odsSize) - 1
 		}
 	}
 	endIndex = endIndex % squareSize
+
+	if startIndex > odsSize {
+		return nil, nil, fmt.Errorf("Error getting content, start index %v is larger than odsSize %v", startIndex, odsSize)
+	}
+
+	if endIndex+1 > odsSize {
+		return nil, nil, fmt.Errorf("Error getting content, end index %v is larger than odsSize %v", endIndex, odsSize)
+	}
 	// get rows behind row root and shares for our blob
 	rows := [][][]byte{}
 	shares := [][]byte{}
@@ -218,9 +244,15 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 		}
 		rows = append(rows, row)
 
+		if odsSize > uint64(len(row)) {
+			return nil, nil, fmt.Errorf("Error getting shares, odsSize %v is largern than row length %v", odsSize, len(row))
+		}
 		odsRow := row[:odsSize]
 
 		if startRow == endRow {
+			if startIndex > endIndex+1 {
+				return nil, nil, fmt.Errorf("Error getting content, start index %v is larger than endIndex %v + 1", startIndex, endIndex)
+			}
 			shares = append(shares, odsRow[startIndex:endIndex+1]...)
 			break
 		} else if i == startRow {
@@ -233,6 +265,9 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 	}
 
 	data := []byte{}
+	if tree.NamespaceSize*2+1 > uint64(len(shares[0])) || tree.NamespaceSize*2+5 > uint64(len(shares[0])) {
+		return nil, nil, fmt.Errorf("Error getting sequence length on share of size", len(shares[0]))
+	}
 	sequenceLength := binary.BigEndian.Uint32(shares[0][tree.NamespaceSize*2+1 : tree.NamespaceSize*2+5])
 	for i, share := range shares {
 		// trim extra namespace
@@ -243,7 +278,9 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 		}
 		data = append(data, share[tree.NamespaceSize+1:]...)
 	}
-
+	if sequenceLength > uint32(len(data)) {
+		return nil, nil, fmt.Errorf("Error getting blob from shares, sequenceLength %v is larger than length of data %v", sequenceLength, len(data))
+	}
 	data = data[:sequenceLength]
 	squareData := celestia.SquareData{
 		RowRoots:    rowRoots,
