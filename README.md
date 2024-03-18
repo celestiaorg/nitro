@@ -10,6 +10,21 @@
     <a href="https://developer.arbitrum.io/"><strong>Next Generation Ethereum L2 Technology »</strong></a>
     <br />
   </p>
+
+  
+</p>
+
+<p align="center">
+<a href="https://celestia.org">
+    <img src="docs/celestia/Celestia-logo-color-color.svg" alt="Logo" width="300" height="300">
+  </a>
+
+  <h3 align="center">Celestia</h3>
+
+  <p align="center">
+    <a href="https://celestia.org"><strong>Modular Data Availability network that securely scales with the number of users »</strong></a>
+    <br />
+  </p>
 </p>
 
 ## About Arbitrum Nitro
@@ -40,6 +55,14 @@ Essentially, Nitro runs Geth at layer 2 on top of Ethereum, and can prove fraud 
 compiled to WASM.
 
 Arbitrum One successfully migrated from the Classic Arbitrum stack onto Nitro on 8/31/22. (See [state migration](https://developer.arbitrum.io/migration/state-migration) and [dapp migration](https://developer.arbitrum.io/migration/dapp_migration) for more info).
+
+## About Celestia
+
+<img src="docs/celestia/Celestia-logo-color-color.svg" alt="Logo" width="200" height="200">
+
+Celestia is a modular consensus and data network, built to enable anyone to easily deploy their own blockchain with minimal overhead.
+
+Celestia is a minimal blockchain that only orders and publishes transactions and does not execute them. By decoupling the consensus and application execution layers, Celestia modularizes the blockchain technology stack and unlocks new possibilities for decentralized application builders. Lean more at [Celestia.org](https://celestia.org).
 
 ## License
 
