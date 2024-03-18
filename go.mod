@@ -18,7 +18,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.11.10
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.26.9
 	github.com/cavaliergopher/grab/v3 v3.0.1
-	github.com/celestiaorg/celestia-openrpc v0.3.1-0.20240214152243-eea73bdb149f
+	github.com/celestiaorg/celestia-openrpc v0.3.1-0.20240317221052-b2177dc03103
 	github.com/celestiaorg/nmt v0.20.0
 	github.com/celestiaorg/rsmt2d v0.11.0
 	github.com/cockroachdb/pebble v0.0.0-20230928194634-aa077af62593
@@ -352,7 +352,6 @@ require (
 )
 
 replace (
-	github.com/celestiaorg/celestia-openrpc => github.com/Ferret-san/celestia-openrpc v0.3.1-0.20240317213028-890756a94c22
 	github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
 	github.com/tendermint/tendermint => github.com/celestiaorg/celestia-core v1.29.0-tm-v0.34.29
 )
