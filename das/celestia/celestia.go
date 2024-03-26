@@ -9,6 +9,7 @@ import (
 	"math/big"
 
 	"github.com/offchainlabs/nitro/arbutil"
+	"github.com/spf13/pflag"
 	blobstreamx "github.com/succinctlabs/blobstreamx/bindings"
 
 	openrpc "github.com/celestiaorg/celestia-openrpc"
@@ -46,6 +47,19 @@ type CelestiaDA struct {
 	Trpc        *http.HTTP
 	Namespace   share.Namespace
 	BlobstreamX *blobstreamx.BlobstreamX
+}
+
+// These are currently only used to generate the types for the arbitrum-orbit-sdk
+func CelestiaDAConfigAddOptions(prefix string, f *pflag.FlagSet) {
+	f.Bool(prefix+".enable", false, "Enable Celestia DA")
+	f.Bool(prefix+".is-poster", false, "Node is batch poster node")
+	f.Float64(prefix+".gas-price", 0.1, "Gas for Celestia transactions")
+	f.String(prefix+".rpc", "", "Rpc endpoint for celestia-node")
+	f.String(prefix+".tendermint-rpc", "", "Tendermint RPC endpoint, only used when the node is a batch poster")
+	f.String(prefix+".namespace-id", "", "Celestia Namespace to post data to")
+	f.String(prefix+".auth-token", "", "Auth token for Celestia Node")
+	f.String(prefix+".blobstreamx-address", "", "Address for BlobstreamX contract")
+	f.Uint64(prefix+".event-channel-size", 0, "Size of event channel for BlobstreamX DataCommitmentStored")
 }
 
 func NewCelestiaDA(cfg DAConfig, l1Interface arbutil.L1Interface) (*CelestiaDA, error) {
