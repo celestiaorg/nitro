@@ -8,7 +8,6 @@ import (
 	"errors"
 	"math/big"
 
-	"github.com/offchainlabs/nitro/arbutil"
 	"github.com/spf13/pflag"
 	blobstreamx "github.com/succinctlabs/blobstreamx/bindings"
 
@@ -17,6 +16,7 @@ import (
 	"github.com/celestiaorg/celestia-openrpc/types/share"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/tendermint/tendermint/rpc/client/http"
 )
@@ -27,6 +27,7 @@ type DAConfig struct {
 	GasPrice           float64 `koanf:"gas-price"`
 	Rpc                string  `koanf:"rpc"`
 	TendermintRPC      string  `koanf:"tendermint-rpc"`
+	EthRpc             string  `koanf:"eth-rpc"`
 	NamespaceId        string  `koanf:"namespace-id"`
 	AuthToken          string  `koanf:"auth-token"`
 	BlobstreamXAddress string  `koanf:"blobstreamx-address"`
@@ -56,13 +57,14 @@ func CelestiaDAConfigAddOptions(prefix string, f *pflag.FlagSet) {
 	f.Float64(prefix+".gas-price", 0.1, "Gas for Celestia transactions")
 	f.String(prefix+".rpc", "", "Rpc endpoint for celestia-node")
 	f.String(prefix+".tendermint-rpc", "", "Tendermint RPC endpoint, only used when the node is a batch poster")
+	f.String(prefix+".eth-rpc", "", "Eth Client RPC endpoint, only used when the node is a batch poster")
 	f.String(prefix+".namespace-id", "", "Celestia Namespace to post data to")
 	f.String(prefix+".auth-token", "", "Auth token for Celestia Node")
 	f.String(prefix+".blobstreamx-address", "", "Address for BlobstreamX contract")
 	f.Uint64(prefix+".event-channel-size", 0, "Size of event channel for BlobstreamX DataCommitmentStored")
 }
 
-func NewCelestiaDA(cfg DAConfig, l1Interface arbutil.L1Interface) (*CelestiaDA, error) {
+func NewCelestiaDA(cfg DAConfig) (*CelestiaDA, error) {
 	daClient, err := openrpc.NewClient(context.Background(), cfg.Rpc, cfg.AuthToken)
 	if err != nil {
 		return nil, err
@@ -82,6 +84,7 @@ func NewCelestiaDA(cfg DAConfig, l1Interface arbutil.L1Interface) (*CelestiaDA, 
 	}
 
 	var trpc *http.HTTP
+	var ethClient *ethclient.Client
 	if cfg.IsPoster {
 		trpc, err = http.New(cfg.TendermintRPC, "/websocket")
 		if err != nil {
@@ -92,9 +95,14 @@ func NewCelestiaDA(cfg DAConfig, l1Interface arbutil.L1Interface) (*CelestiaDA, 
 		if err != nil {
 			return nil, err
 		}
+
+		ethClient, err = ethclient.Dial(cfg.EthRpc)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	blobstreamx, err := blobstreamx.NewBlobstreamX(common.HexToAddress(cfg.BlobstreamXAddress), l1Interface)
+	blobstreamx, err := blobstreamx.NewBlobstreamX(common.HexToAddress(cfg.BlobstreamXAddress), ethClient)
 	if err != nil {
 		return nil, err
 	}
@@ -229,6 +237,7 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, error) 
 		case event := <-eventsChan:
 			log.Info("Found Data Root submission event", "proof_nonce", event.ProofNonce, "start", event.StartBlock, "end", event.EndBlock)
 			if blobPointer.BlockHeight >= event.StartBlock && event.EndBlock > blobPointer.BlockHeight {
+				log.Info("Data root block height in range, proceeding to submit", "proof_nonce", event.ProofNonce, "block_height", blobPointer.BlockHeight)
 				inclusionProof, err := c.Trpc.DataRootInclusionProof(ctx, blobPointer.BlockHeight, event.StartBlock, event.EndBlock)
 				if err != nil {
 					log.Warn("DataRootInclusionProof error", "err", err)
@@ -327,11 +336,6 @@ func (c *CelestiaDA) Read(ctx context.Context, blobPointer *BlobPointer) ([]byte
 	rows := [][][]byte{}
 	for i := startRow; i <= endRow; i++ {
 		rows = append(rows, eds.Row(uint(i)))
-	}
-
-	printRows := [][][]byte{}
-	for i := 0; i < int(squareSize); i++ {
-		printRows = append(printRows, eds.Row(uint(i)))
 	}
 
 	squareData := SquareData{

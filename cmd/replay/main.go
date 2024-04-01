@@ -206,7 +206,7 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 			}
 		}()
 		partialRow := func() bool {
-			if blobPointer.SharesLength%squareSize > 0 {
+			if remainingShares%odsSize > 0 {
 				return true
 			} else {
 				return false
@@ -425,9 +425,6 @@ func main() {
 			}
 		}
 
-		// need to add Celestia or just "ExternalDA" as an option to the ArbitrumChainParams
-		// for now we hard code Cthis to treu and hardcode Celestia in `readMessage`
-		// to test the integration
 		message := readMessage(chainConfig.ArbitrumChainParams)
 
 		chainContext := WavmChainContext{}

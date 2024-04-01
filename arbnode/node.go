@@ -539,7 +539,7 @@ func createNodeImpl(
 	} else if l2Config.ArbitrumChainParams.DataAvailabilityCommittee {
 		return nil, errors.New("a data availability service is required for this chain, but it was not configured")
 	} else if config.Celestia.Enable {
-		celestiaService, err := celestia.NewCelestiaDA(config.Celestia, l1client)
+		celestiaService, err := celestia.NewCelestiaDA(config.Celestia)
 		if err != nil {
 			return nil, err
 		}
