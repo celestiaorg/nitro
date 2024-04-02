@@ -184,10 +184,7 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 		return nil, nil, fmt.Errorf("Error, shares length is %v", blobPointer.SharesLength)
 	}
 
-	var endIndex uint64
-	var endRow uint64
-	var remainingShares uint64
-	var rowsNeeded uint64
+	var endRow, endIndex, remainingShares, rowsNeeded uint64
 
 	if blobPointer.SharesLength <= firtsRowShares {
 		endIndex = blobPointer.Start + blobPointer.SharesLength - 1
@@ -217,7 +214,7 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 			if remainingShares%odsSize < 1 {
 				return nil, nil, fmt.Errorf("Error calculating index for partial row remainingShares mod odsSize is %v, which is less than 1", remainingShares%odsSize)
 			}
-			endIndex = endRow*odsSize + (remainingShares%odsSize - 1)
+			endIndex = endRow*squareSize + (remainingShares%odsSize - 1)
 		} else {
 			if (endRow * odsSize) < 1 {
 				return nil, nil, fmt.Errorf("Error, endRow * odszie is %v, which is less than 1", endRow*odsSize)
@@ -226,10 +223,6 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 		}
 	}
 	endIndex = endIndex % squareSize
-
-	if startIndex > odsSize {
-		return nil, nil, fmt.Errorf("Error getting content, start index %v is larger than odsSize %v", startIndex, odsSize)
-	}
 
 	if endIndex+1 > odsSize {
 		return nil, nil, fmt.Errorf("Error getting content, end index %v is larger than odsSize %v", endIndex, odsSize)
