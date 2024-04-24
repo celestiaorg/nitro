@@ -421,7 +421,7 @@ func RecoverPayloadFromCelestiaBatch(
 
 	blobPointer := celestia.BlobPointer{}
 	blobBytes := buf.Bytes()
-	blobPointer.UnmarshalBinary(blobBytes)
+	err = blobPointer.UnmarshalBinary(blobBytes)
 	if err != nil {
 		log.Error("Couldn't unmarshal Celestia blob pointer", "err", err)
 		return nil, nil
@@ -439,11 +439,10 @@ func RecoverPayloadFromCelestiaBatch(
 			return nil, err
 		}
 
+		odsSize := squareData.SquareSize / 2
 		rowIndex := squareData.StartRow
-		squareSize := squareData.SquareSize
 		for _, row := range squareData.Rows {
-			// half of the squareSize for the EDS gives us the original length of the data
-			treeConstructor := tree.NewConstructor(recordPreimage, squareSize/2)
+			treeConstructor := tree.NewConstructor(recordPreimage, odsSize)
 			root, err := tree.ComputeNmtRoot(treeConstructor, uint(rowIndex), row)
 			if err != nil {
 				log.Error("Failed to compute row root", "err", err)

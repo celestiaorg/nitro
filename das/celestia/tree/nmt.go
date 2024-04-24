@@ -1,7 +1,9 @@
 package tree
 
 import (
+	"encoding/hex"
 	"errors"
+	"fmt"
 
 	"github.com/celestiaorg/rsmt2d"
 	"github.com/ethereum/go-ethereum/common"
@@ -49,6 +51,7 @@ func getNmtChildrenHashes(hash []byte) (leftChild, rightChild []byte) {
 
 // walkMerkleTree recursively walks down the Merkle tree and collects leaf node data.
 func NmtContent(oracle func(bytes32) ([]byte, error), rootHash []byte) ([][]byte, error) {
+	fmt.Printf("Fetching data for NMT hash: %v\n", hex.EncodeToString(rootHash))
 	preimage, err := oracle(common.BytesToHash(rootHash[NamespaceSize*2:]))
 	if err != nil {
 		return nil, err
@@ -61,10 +64,12 @@ func NmtContent(oracle func(bytes32) ([]byte, error), rootHash []byte) ([][]byte
 	}
 
 	leftChildHash, rightChildHash := getNmtChildrenHashes(preimage)
+	fmt.Printf("Fetching data for Left Child node in NMT: %v\n", hex.EncodeToString(leftChildHash))
 	leftData, err := NmtContent(oracle, leftChildHash)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("Fetching data for Right Child node in NMT: %v\n", hex.EncodeToString(rightChildHash))
 	rightData, err := NmtContent(oracle, rightChildHash)
 	if err != nil {
 		return nil, err

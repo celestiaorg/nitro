@@ -1,6 +1,7 @@
 package tree
 
 import (
+	"fmt"
 	"math/bits"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -41,14 +42,15 @@ func getSplitPoint(length int64) int64 {
 }
 
 // getChildrenHashes splits the preimage into the hashes of the left and right children.
-func getChildrenHashes(oracle func(bytes32) ([]byte, error), preimage []byte) (leftChild, rightChild common.Hash, err error) {
+func getChildrenHashes(preimage []byte) (leftChild, rightChild common.Hash, err error) {
 	leftChild = common.BytesToHash(preimage[:32])
 	rightChild = common.BytesToHash(preimage[32:])
 	return leftChild, rightChild, nil
 }
 
-// walkMerkleTree recursively walks down the Merkle tree and collects leaf node data.
+// MerkleTreeContent recursively walks down the Merkle tree and collects leaf node data.
 func MerkleTreeContent(oracle func(bytes32) ([]byte, error), rootHash common.Hash) ([][]byte, error) {
+	fmt.Printf("Fetching data for Merkle Tree hash: %v\n", rootHash.Hex())
 	preimage, err := oracle(rootHash)
 	if err != nil {
 		return nil, err
@@ -58,14 +60,16 @@ func MerkleTreeContent(oracle func(bytes32) ([]byte, error), rootHash common.Has
 		return [][]byte{preimage[1:]}, nil
 	}
 
-	leftChildHash, rightChildHash, err := getChildrenHashes(oracle, preimage[1:])
+	leftChildHash, rightChildHash, err := getChildrenHashes(preimage[1:])
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("Fetching data for Left Child node in Merkle Tree: %v\n", leftChildHash.Hex())
 	leftData, err := MerkleTreeContent(oracle, leftChildHash)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("Fetching data for Right Child node in Merkle Tree: %v\n", rightChildHash.Hex())
 	rightData, err := MerkleTreeContent(oracle, rightChildHash)
 	if err != nil {
 		return nil, err

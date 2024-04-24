@@ -6,32 +6,25 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
-	"math/big"
+	"fmt"
 
 	"github.com/spf13/pflag"
-	blobstreamx "github.com/succinctlabs/blobstreamx/bindings"
 
 	openrpc "github.com/celestiaorg/celestia-openrpc"
 	"github.com/celestiaorg/celestia-openrpc/types/blob"
 	"github.com/celestiaorg/celestia-openrpc/types/share"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/tendermint/tendermint/rpc/client/http"
 )
 
 type DAConfig struct {
-	Enable             bool    `koanf:"enable"`
-	IsPoster           bool    `koanf:"is-poster"`
-	GasPrice           float64 `koanf:"gas-price"`
-	Rpc                string  `koanf:"rpc"`
-	TendermintRPC      string  `koanf:"tendermint-rpc"`
-	EthRpc             string  `koanf:"eth-rpc"`
-	NamespaceId        string  `koanf:"namespace-id"`
-	AuthToken          string  `koanf:"auth-token"`
-	BlobstreamXAddress string  `koanf:"blobstreamx-address"`
-	EventChannelSize   uint64  `koanf:"event-channel-size"`
+	Enable        bool    `koanf:"enable"`
+	IsPoster      bool    `koanf:"is-poster"`
+	GasPrice      float64 `koanf:"gas-price"`
+	Rpc           string  `koanf:"rpc"`
+	TendermintRPC string  `koanf:"tendermint-rpc"`
+	NamespaceId   string  `koanf:"namespace-id"`
+	AuthToken     string  `koanf:"auth-token"`
 }
 
 // CelestiaMessageHeaderFlag indicates that this data is a Blob Pointer
@@ -43,11 +36,10 @@ func IsCelestiaMessageHeaderByte(header byte) bool {
 }
 
 type CelestiaDA struct {
-	Cfg         DAConfig
-	Client      *openrpc.Client
-	Trpc        *http.HTTP
-	Namespace   share.Namespace
-	BlobstreamX *blobstreamx.BlobstreamX
+	Cfg       DAConfig
+	Client    *openrpc.Client
+	Trpc      *http.HTTP
+	Namespace share.Namespace
 }
 
 // These are currently only used to generate the types for the arbitrum-orbit-sdk
@@ -57,11 +49,8 @@ func CelestiaDAConfigAddOptions(prefix string, f *pflag.FlagSet) {
 	f.Float64(prefix+".gas-price", 0.1, "Gas for Celestia transactions")
 	f.String(prefix+".rpc", "", "Rpc endpoint for celestia-node")
 	f.String(prefix+".tendermint-rpc", "", "Tendermint RPC endpoint, only used when the node is a batch poster")
-	f.String(prefix+".eth-rpc", "", "Eth Client RPC endpoint, only used when the node is a batch poster")
 	f.String(prefix+".namespace-id", "", "Celestia Namespace to post data to")
 	f.String(prefix+".auth-token", "", "Auth token for Celestia Node")
-	f.String(prefix+".blobstreamx-address", "", "Address for BlobstreamX contract")
-	f.Uint64(prefix+".event-channel-size", 0, "Size of event channel for BlobstreamX DataCommitmentStored")
 }
 
 func NewCelestiaDA(cfg DAConfig) (*CelestiaDA, error) {
@@ -84,7 +73,6 @@ func NewCelestiaDA(cfg DAConfig) (*CelestiaDA, error) {
 	}
 
 	var trpc *http.HTTP
-	var ethClient *ethclient.Client
 	if cfg.IsPoster {
 		trpc, err = http.New(cfg.TendermintRPC, "/websocket")
 		if err != nil {
@@ -95,28 +83,13 @@ func NewCelestiaDA(cfg DAConfig) (*CelestiaDA, error) {
 		if err != nil {
 			return nil, err
 		}
-
-		ethClient, err = ethclient.Dial(cfg.EthRpc)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	blobstreamx, err := blobstreamx.NewBlobstreamX(common.HexToAddress(cfg.BlobstreamXAddress), ethClient)
-	if err != nil {
-		return nil, err
-	}
-
-	if cfg.EventChannelSize == 0 {
-		cfg.EventChannelSize = 100
 	}
 
 	return &CelestiaDA{
-		Cfg:         cfg,
-		Client:      daClient,
-		Trpc:        trpc,
-		Namespace:   namespace,
-		BlobstreamX: blobstreamx,
+		Cfg:       cfg,
+		Client:    daClient,
+		Trpc:      trpc,
+		Namespace: namespace,
 	}, nil
 }
 
@@ -183,13 +156,27 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, error) 
 
 	copy(dataRoot[:], header.DataHash)
 
+	// Row roots give us the length of the EDS
+	squareSize := uint64(len(header.DAH.RowRoots))
+	// ODS size
+	odsSize := squareSize / 2
+
+	blobIndex := uint64(blob.Index)
+	// startRow
+	startRow := blobIndex / squareSize
+	if odsSize*startRow > blobIndex {
+		// return an empty batch
+		return nil, fmt.Errorf("storing Celestia information, odsSize*startRow=%v was larger than blobIndex=%v", odsSize*startRow, blob.Index)
+	}
+	startIndexOds := blobIndex - odsSize*startRow
 	blobPointer := BlobPointer{
 		BlockHeight:  height,
-		Start:        uint64(blob.Index),
+		Start:        startIndexOds,
 		SharesLength: sharesLength,
 		TxCommitment: txCommitment,
 		DataRoot:     dataRoot,
 	}
+	log.Info("Posted blob to height and dataRoot", "height", blobPointer.BlockHeight, "dataRoot", hex.EncodeToString(blobPointer.DataRoot[:]))
 
 	blobPointerData, err := blobPointer.MarshalBinary()
 	if err != nil {
@@ -212,74 +199,7 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, error) 
 
 	serializedBlobPointerData := buf.Bytes()
 	log.Trace("celestia.CelestiaDA.Store", "serialized_blob_pointer", serializedBlobPointerData)
-
-	eventsChan := make(chan *blobstreamx.BlobstreamXDataCommitmentStored, c.Cfg.EventChannelSize)
-	subscription, err := c.BlobstreamX.WatchDataCommitmentStored(
-		&bind.WatchOpts{
-			Context: ctx,
-		},
-		eventsChan,
-		nil,
-		nil,
-		nil,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer subscription.Unsubscribe()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case err := <-subscription.Err():
-			return nil, err
-		case event := <-eventsChan:
-			log.Info("Found Data Root submission event", "proof_nonce", event.ProofNonce, "start", event.StartBlock, "end", event.EndBlock)
-			if blobPointer.BlockHeight >= event.StartBlock && event.EndBlock > blobPointer.BlockHeight {
-				log.Info("Data root block height in range, proceeding to submit", "proof_nonce", event.ProofNonce, "block_height", blobPointer.BlockHeight)
-				inclusionProof, err := c.Trpc.DataRootInclusionProof(ctx, blobPointer.BlockHeight, event.StartBlock, event.EndBlock)
-				if err != nil {
-					log.Warn("DataRootInclusionProof error", "err", err)
-					return nil, err
-				}
-
-				sideNodes := make([][32]byte, len(inclusionProof.Proof.Aunts))
-				for i, aunt := range inclusionProof.Proof.Aunts {
-					sideNodes[i] = *(*[32]byte)(aunt)
-				}
-
-				blobPointer.Key = uint64(inclusionProof.Proof.Index)
-				blobPointer.NumLeaves = uint64(inclusionProof.Proof.Total)
-				blobPointer.SideNodes = sideNodes
-				blobPointer.ProofNonce = event.ProofNonce.Uint64()
-
-				tuple := blobstreamx.DataRootTuple{
-					Height:   big.NewInt(int64(blobPointer.BlockHeight)),
-					DataRoot: blobPointer.DataRoot,
-				}
-
-				proof := blobstreamx.BinaryMerkleProof{
-					SideNodes: blobPointer.SideNodes,
-					Key:       big.NewInt(int64(blobPointer.Key)),
-					NumLeaves: big.NewInt(int64(blobPointer.NumLeaves)),
-				}
-
-				valid, err := c.BlobstreamX.VerifyAttestation(
-					&bind.CallOpts{},
-					big.NewInt(event.ProofNonce.Int64()),
-					tuple,
-					proof,
-				)
-				if err != nil || !valid {
-					log.Warn("Error verifying attestation", "err", err)
-					return nil, err
-				}
-
-				return serializedBlobPointerData, nil
-			}
-		}
-	}
+	return serializedBlobPointerData, nil
 }
 
 type SquareData struct {
@@ -312,25 +232,37 @@ func (c *CelestiaDA) Read(ctx context.Context, blobPointer *BlobPointer) ([]byte
 	squareSize := uint64(eds.Width())
 	odsSize := squareSize / 2
 
-	startRow := blobPointer.Start / squareSize
-	startCol := blobPointer.Start % squareSize
-	firtsRowShares := odsSize - startCol
-	// Quick maths in case we span multiple rows
-	var endRow uint64
-	var remainingShares uint64
-	var rowsNeeded uint64
-	if blobPointer.SharesLength <= firtsRowShares {
-		endRow = startRow
-	} else {
-		remainingShares = blobPointer.SharesLength - firtsRowShares
-		rowsNeeded = remainingShares / odsSize
-		endRow = startRow + rowsNeeded + func() uint64 {
-			if remainingShares%odsSize > 0 {
-				return 1
-			} else {
-				return 0
-			}
-		}()
+	startRow := blobPointer.Start / odsSize
+
+	if blobPointer.Start >= odsSize*odsSize {
+		log.Error("startIndexOds >= odsSize*odsSize", "startIndexOds", blobPointer.Start, "odsSize*odsSize", odsSize*odsSize)
+		return []byte{}, nil, nil
+	}
+
+	if blobPointer.Start+blobPointer.SharesLength < 1 {
+		log.Error("startIndexOds+blobPointer.SharesLength < 1", "startIndexOds+blobPointer.SharesLength", blobPointer.Start+blobPointer.SharesLength)
+		return []byte{}, nil, nil
+	}
+
+	endIndexOds := blobPointer.Start + blobPointer.SharesLength - 1
+	if endIndexOds >= odsSize*odsSize {
+		log.Error("endIndexOds >= odsSize*odsSize", "endIndexOds", endIndexOds, "odsSize*odsSize", odsSize*odsSize)
+		return []byte{}, nil, nil
+	}
+
+	endRow := endIndexOds / odsSize
+
+	if endRow > odsSize || startRow > odsSize {
+		log.Error("endRow > odsSize || startRow > odsSize", "endRow", endRow, "startRow", startRow, "odsSize", odsSize)
+		return []byte{}, nil, nil
+	}
+
+	startColumn := blobPointer.Start % odsSize
+	endColumn := endIndexOds % odsSize
+
+	if startRow == endRow && startColumn > endColumn+1 {
+		log.Error("startColumn > endColumn+1 on the same row", "startColumn", startColumn, "endColumn+1 ", endColumn+1)
+		return []byte{}, nil, nil
 	}
 
 	rows := [][][]byte{}
