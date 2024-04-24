@@ -158,6 +158,9 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 		return wavmio.ResolveTypedPreimage(arbutil.Sha2_256PreimageType, hash)
 	}
 
+	if blobPointer.SharesLength == 0 {
+		return nil, nil, fmt.Errorf("Error, shares length is %v", blobPointer.SharesLength)
+	}
 	// first, walk down the merkle tree
 	leaves, err := tree.MerkleTreeContent(oracle, common.BytesToHash(blobPointer.DataRoot[:]))
 	if err != nil {
@@ -171,62 +174,46 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 	// We get the original data square size, wich is (size_of_the_extended_square / 2)
 	odsSize := squareSize / 2
 
-	startRow := blobPointer.Start / squareSize
+	startRow := blobPointer.Start / odsSize
 
-	startIndex := blobPointer.Start % squareSize
-
-	if startIndex > odsSize {
-		return nil, nil, fmt.Errorf("Error getting number of shares in first row: StartIndex %v > OdsSize %v", startIndex, odsSize)
-	}
-	firtsRowShares := odsSize - startIndex
-
-	if blobPointer.SharesLength == 0 {
-		return nil, nil, fmt.Errorf("Error, shares length is %v", blobPointer.SharesLength)
-	}
-
-	var endRow, endIndex, remainingShares, rowsNeeded uint64
-
-	if blobPointer.SharesLength <= firtsRowShares {
-		endIndex = blobPointer.Start + blobPointer.SharesLength - 1
-		endRow = startRow
-	} else {
-		if firtsRowShares > blobPointer.SharesLength {
-			return nil, nil, fmt.Errorf("Error, shares in first row %v is larger than total share length %v", firtsRowShares, blobPointer.SharesLength)
-		}
-		remainingShares = blobPointer.SharesLength - firtsRowShares
-		rowsNeeded = remainingShares / odsSize
-		endRow = startRow + rowsNeeded + func() uint64 {
-			if remainingShares%odsSize > 0 {
-				return 1
-			} else {
-				return 0
-			}
-		}()
-		partialRow := func() bool {
-			if remainingShares%odsSize > 0 {
-				return true
-			} else {
-				return false
-			}
-		}()
-
-		if partialRow {
-			if remainingShares%odsSize < 1 {
-				return nil, nil, fmt.Errorf("Error calculating index for partial row remainingShares mod odsSize is %v, which is less than 1", remainingShares%odsSize)
-			}
-			endIndex = endRow*squareSize + (remainingShares%odsSize - 1)
-		} else {
-			if (endRow * odsSize) < 1 {
-				return nil, nil, fmt.Errorf("Error, endRow * odszie is %v, which is less than 1", endRow*odsSize)
-			}
-			endIndex = (endRow * odsSize) - 1
+	if blobPointer.Start >= odsSize*odsSize {
+		// check that the square isn't just our share (very niche case, should only happens on local testing)
+		if blobPointer.Start != odsSize*odsSize && odsSize > 1 {
+			return nil, nil, fmt.Errorf("Error Start Index out of ODS bounds: index=%v odsSize=%v", blobPointer.Start, odsSize)
 		}
 	}
-	endIndex = endIndex % squareSize
 
-	if endIndex+1 > odsSize {
-		return nil, nil, fmt.Errorf("Error getting content, end index %v is larger than odsSize %v", endIndex, odsSize)
+	// adjusted_end_index = adjusted_start_index + length - 1
+	if blobPointer.Start+blobPointer.SharesLength < 1 {
+		return nil, nil, fmt.Errorf("Error getting number of shares in first row: index+length %v > 1", blobPointer.Start+blobPointer.SharesLength)
 	}
+	endIndexOds := blobPointer.Start + blobPointer.SharesLength - 1
+	if endIndexOds >= odsSize*odsSize {
+		// check that the square isn't just our share (very niche case, should only happens on local testing)
+		if endIndexOds != odsSize*odsSize && odsSize > 1 {
+			return nil, nil, fmt.Errorf("Error End Index out of ODS bounds: index=%v odsSize=%v", endIndexOds, odsSize)
+		}
+	}
+	endRow := endIndexOds / odsSize
+
+	if endRow > odsSize || startRow > odsSize {
+		return nil, nil, fmt.Errorf("Error rows out of bounds: startRow=%v endRow=%v odsSize=%v", startRow, endRow, odsSize)
+	}
+
+	startColumn := blobPointer.Start % odsSize
+	endColumn := endIndexOds % odsSize
+
+	if startRow == endRow && startColumn > endColumn+1 {
+		log.Error("startColumn > endColumn+1 on the same row", "startColumn", startColumn, "endColumn+1 ", endColumn+1)
+		return []byte{}, nil, nil
+	}
+
+	// adjust the math in the CelestiaPayload function in the inbox
+
+	// we can take ods * ods -> end index in ods
+	// then we check that start index is in bounds, otherwise ignore -> return empty batch
+	// then we check that end index is in bounds, otherwise ignore
+
 	// get rows behind row root and shares for our blob
 	rows := [][][]byte{}
 	shares := [][]byte{}
@@ -242,16 +229,14 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 		}
 		odsRow := row[:odsSize]
 
+		// TODO explain the logic behind this branching
 		if startRow == endRow {
-			if startIndex > endIndex+1 {
-				return nil, nil, fmt.Errorf("Error getting content, start index %v is larger than endIndex %v + 1", startIndex, endIndex)
-			}
-			shares = append(shares, odsRow[startIndex:endIndex+1]...)
+			shares = append(shares, odsRow[startColumn:endColumn+1]...)
 			break
 		} else if i == startRow {
-			shares = append(shares, odsRow[startIndex:]...)
+			shares = append(shares, odsRow[startColumn:]...)
 		} else if i == endRow {
-			shares = append(shares, odsRow[:endIndex+1]...)
+			shares = append(shares, odsRow[:endColumn+1]...)
 		} else {
 			shares = append(shares, odsRow...)
 		}
@@ -259,12 +244,12 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 
 	data := []byte{}
 	if tree.NamespaceSize*2+1 > uint64(len(shares[0])) || tree.NamespaceSize*2+5 > uint64(len(shares[0])) {
-		return nil, nil, fmt.Errorf("Error getting sequence length on share of size", len(shares[0]))
+		return nil, nil, fmt.Errorf("Error getting sequence length on share of size %v", len(shares[0]))
 	}
 	sequenceLength := binary.BigEndian.Uint32(shares[0][tree.NamespaceSize*2+1 : tree.NamespaceSize*2+5])
 	for i, share := range shares {
 		// trim extra namespace
-		share := share[29:]
+		share := share[tree.NamespaceSize:]
 		if i == 0 {
 			data = append(data, share[tree.NamespaceSize+5:]...)
 			continue
@@ -284,6 +269,10 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 		EndRow:      endRow,
 	}
 	return data, &squareData, nil
+}
+
+func (dasReader *PreimageCelestiaReader) GetProof(ctx context.Context, msg []byte) ([]byte, error) {
+	return nil, nil
 }
 
 // To generate:

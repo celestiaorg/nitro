@@ -44,10 +44,17 @@ You can see where the preimage oracle gets used in the fraud proof replay binary
 
 Something important to note is that the preimage oracle only keeps track of hashes for the rows in the Celestia data square in which a blob resides in, this way each Orbit chain with Celestia underneath does not need validators to recompute an entire Celestia Data Square, but instead, only have to compute the row roots for the rows in which it's data lives in, and the header data root, which is the binary merkle tree hash built using the row roots and column roots fetched from a Celestia node. Because only data roots that can be confirmed on Blobstream get accepted into the sequencer inbox, one can have a high degree of certainty that the canonical data root being unpealed as well as the row roots are in fact correct.
 
-# BlobstreamX
+# DA Proof and BlobstreamX 
 
-Finally, the integration only accepts batches with information that can be confirmed on BlobstreamX, which gives us a high certainty that data was made available on Celestia.
+Finally, the integration only accepts batches of 89 bytes in length for a celestia header flag. This means that a Celestia Batch has 88 bytes of information, which are the block height, the start index of the blob, the length in shares of the blob, the transaction commitment, and the data root for the given height.
 
-You can see how BlobstreamX is integrated into the `SequencerInbox.sol` contract [here](https://github.com/celestiaorg/nitro-contracts/blob/celestia-v1.2.1/src/bridge/SequencerInbox.sol#L584-L630), which allows us to discard batches with otherwise faulty data roots, thus giving us a high degree of confidence that the data root can be safely unpacked in case of a challenge.
+In the case of a challenge, for a celestia batch, the OSP will require an additionally appended "da proof", which is verified against BlobstreamX. Here's what happens based on the result of the BlobstreamX verification:
+
+- **IN_BLOBSTREAM**: means the batch was verified against blobstrea, the height and data root in the batch match, and the start + legth do not go out of bounds. This will cause the rest of the OSP to proceed as normal.
+- **COUNTERFACTUAL_COMMITMENT**: the height can be verified against blobstream, but the posted data root does not match, or the start + length go out of bounds. Or the Batch Poster tried posting a height too far into the ftureu (1000 blocks ahead of BlobstreamX). This will cause the OSP to proceed with an empty batch. Note that Nitro nodes for a chain with Celestia DA will also discard any batches that cannot be correctly validated.
+- **UNDECIDED**: the height has not been relayed yet, so we revert and wait until the latest height in blobstream is the greater than the batch's height.
+
+You can see how BlobstreamX is integrated into the `OneStepProverHostIO.sol` contract [here]([https://github.com/celestiaorg/nitro-contracts/blob/celestia-v1.2.1/src/bridge/SequencerInbox.sol#L584-L630](https://github.com/celestiaorg/nitro-contracts/blob/contracts-v1.2.1/src/osp/OneStepProverHostIo.sol#L301)), which allows us to discard batches with otherwise faulty data roots, thus giving us a high degree of confidence that the data root can be safely unpacked in case of a challenge.
+
 
 
