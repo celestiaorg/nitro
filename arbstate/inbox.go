@@ -410,7 +410,7 @@ func RecoverPayloadFromCelestiaBatch(
 		log.Error("Couldn't deserialize Celestia header byte", "err", err)
 		return nil, nil
 	}
-	if !celestia.IsCelestiaMessageHeaderByte(header) {
+	if !IsCelestiaMessageHeaderByte(header) {
 		log.Error("Couldn't deserialize Celestia header byte", "err", errors.New("tried to deserialize a message that doesn't have the Celestia header"))
 		return nil, nil
 	}
@@ -431,6 +431,11 @@ func RecoverPayloadFromCelestiaBatch(
 	if err != nil {
 		log.Error("Failed to resolve blob pointer from celestia", "err", err)
 		return nil, err
+	}
+
+	// we read a batch that is to be discarded, so we return the empty batch
+	if len(payload) == 0 {
+		return payload, nil
 	}
 
 	if sha256Preimages != nil {

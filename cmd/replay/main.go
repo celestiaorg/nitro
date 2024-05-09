@@ -177,7 +177,10 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 	startRow := blobPointer.Start / odsSize
 
 	if blobPointer.Start >= odsSize*odsSize {
-		return nil, nil, fmt.Errorf("Error Start Index out of ODS bounds: index=%v odsSize=%v", blobPointer.Start, odsSize)
+		// check that the square isn't just our share (very niche case, should only happens on local testing)
+		if blobPointer.Start != odsSize*odsSize && odsSize > 1 {
+			return nil, nil, fmt.Errorf("Error Start Index out of ODS bounds: index=%v odsSize=%v", blobPointer.Start, odsSize)
+		}
 	}
 
 	// adjusted_end_index = adjusted_start_index + length - 1
@@ -186,12 +189,15 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 	}
 	endIndexOds := blobPointer.Start + blobPointer.SharesLength - 1
 	if endIndexOds >= odsSize*odsSize {
-		return nil, nil, fmt.Errorf("Error End Index out of ODS bounds: index=%v odsSize=%v", endIndexOds, odsSize)
+		// check that the square isn't just our share (very niche case, should only happens on local testing)
+		if endIndexOds != odsSize*odsSize && odsSize > 1 {
+			return nil, nil, fmt.Errorf("Error End Index out of ODS bounds: index=%v odsSize=%v", endIndexOds, odsSize)
+		}
 	}
 	endRow := endIndexOds / odsSize
 
 	if endRow > odsSize || startRow > odsSize {
-		return nil, nil, fmt.Errorf("ErrorRows out of bounds: startRow=%v endRow=%v odsSize=%v", startRow, endRow, odsSize)
+		return nil, nil, fmt.Errorf("Error rows out of bounds: startRow=%v endRow=%v odsSize=%v", startRow, endRow, odsSize)
 	}
 
 	startColumn := blobPointer.Start % odsSize
@@ -243,7 +249,7 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 	sequenceLength := binary.BigEndian.Uint32(shares[0][tree.NamespaceSize*2+1 : tree.NamespaceSize*2+5])
 	for i, share := range shares {
 		// trim extra namespace
-		share := share[29:]
+		share := share[tree.NamespaceSize:]
 		if i == 0 {
 			data = append(data, share[tree.NamespaceSize+5:]...)
 			continue
@@ -263,6 +269,10 @@ func (dasReader *PreimageCelestiaReader) Read(ctx context.Context, blobPointer *
 		EndRow:      endRow,
 	}
 	return data, &squareData, nil
+}
+
+func (dasReader *PreimageCelestiaReader) GetProof(ctx context.Context, msg []byte) ([]byte, error) {
+	return nil, nil
 }
 
 // To generate:

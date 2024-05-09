@@ -1,9 +1,7 @@
 package tree
 
 import (
-	"encoding/hex"
 	"errors"
-	"fmt"
 
 	"github.com/celestiaorg/rsmt2d"
 	"github.com/ethereum/go-ethereum/common"
@@ -51,30 +49,26 @@ func getNmtChildrenHashes(hash []byte) (leftChild, rightChild []byte) {
 
 // walkMerkleTree recursively walks down the Merkle tree and collects leaf node data.
 func NmtContent(oracle func(bytes32) ([]byte, error), rootHash []byte) ([][]byte, error) {
-	fmt.Printf("Fetching data for NMT hash: %v\n", hex.EncodeToString(rootHash))
-	preimage, err := oracle(common.BytesToHash(rootHash[NamespaceSize*2:]))
-	if err != nil {
-		return nil, err
+	stack := [][]byte{rootHash}
+	var data [][]byte
+
+	for len(stack) > 0 {
+		currentHash := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		preimage, err := oracle(common.BytesToHash(currentHash[NamespaceSize*2:]))
+		if err != nil {
+			return nil, err
+		}
+
+		if preimage[0] == leafPrefix[0] {
+			data = append(data, preimage[1:])
+		} else {
+			leftChildHash, rightChildHash := getNmtChildrenHashes(preimage)
+			stack = append(stack, rightChildHash)
+			stack = append(stack, leftChildHash)
+		}
 	}
 
-	// check if the hash corresponds to a leaf
-	if preimage[0] == leafPrefix[0] {
-		// returns the data with the namespace ID prepended
-		return [][]byte{preimage[1:]}, nil
-	}
-
-	leftChildHash, rightChildHash := getNmtChildrenHashes(preimage)
-	fmt.Printf("Fetching data for Left Child node in NMT: %v\n", hex.EncodeToString(leftChildHash))
-	leftData, err := NmtContent(oracle, leftChildHash)
-	if err != nil {
-		return nil, err
-	}
-	fmt.Printf("Fetching data for Right Child node in NMT: %v\n", hex.EncodeToString(rightChildHash))
-	rightData, err := NmtContent(oracle, rightChildHash)
-	if err != nil {
-		return nil, err
-	}
-
-	// Combine the data from the left and right subtrees.
-	return append(leftData, rightData...), nil
+	return data, nil
 }

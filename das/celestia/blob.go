@@ -45,7 +45,6 @@ func (b *BlobPointer) MarshalBinary() ([]byte, error) {
 // serialization format: height + start + end + commitment + data root
 func (b *BlobPointer) UnmarshalBinary(data []byte) error {
 	buf := bytes.NewReader(data)
-
 	// Reading fixed-size values
 	if err := binary.Read(buf, binary.BigEndian, &b.BlockHeight); err != nil {
 		return err
