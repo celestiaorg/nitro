@@ -38,7 +38,6 @@ type ValidatorConfig struct {
 	TendermintRPC  string `koanf:"tendermint-rpc"`
 	EthClient      string `koanf:"eth-ws"`
 	BlobstreamAddr string `koanf:"blobstream"`
-	MaxIterations  uint64 `koan:"max-iterations"`
 }
 
 // CelestiaMessageHeaderFlag indicates that this data is a Blob Pointer
@@ -498,7 +497,7 @@ func (c *CelestiaDA) filter(ctx context.Context, latestBlock uint64, celestiaHei
 	}
 	end := latestBlock
 
-	for attempt := 0; attempt < int(c.Cfg.ValidatorConfig.MaxIterations); attempt++ {
+	for attempt := 0; attempt < 10; attempt++ {
 		eventsIterator, err := c.Prover.BlobstreamX.FilterDataCommitmentStored(
 			&bind.FilterOpts{
 				Context: ctx,
