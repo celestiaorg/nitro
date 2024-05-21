@@ -41,7 +41,7 @@ import (
 	"github.com/offchainlabs/nitro/cmd/chaininfo"
 	"github.com/offchainlabs/nitro/cmd/genericconf"
 	"github.com/offchainlabs/nitro/das"
-	"github.com/offchainlabs/nitro/das/celestia"
+	celestiaTypes "github.com/offchainlabs/nitro/das/celestia/types"
 	"github.com/offchainlabs/nitro/execution"
 	"github.com/offchainlabs/nitro/solgen/go/bridgegen"
 	"github.com/offchainlabs/nitro/util"
@@ -89,7 +89,7 @@ type BatchPoster struct {
 	gasRefunderAddr    common.Address
 	building           *buildingBatch
 	daWriter           das.DataAvailabilityServiceWriter
-	celestiaWriter     celestia.DataAvailabilityWriter
+	celestiaWriter     celestiaTypes.DataAvailabilityWriter
 	dataPoster         *dataposter.DataPoster
 	redisLock          *redislock.Simple
 	messagesPerBatch   *arbmath.MovingAverage[uint64]
@@ -267,7 +267,7 @@ type BatchPosterOpts struct {
 	DeployInfo     *chaininfo.RollupAddresses
 	TransactOpts   *bind.TransactOpts
 	DAWriter       das.DataAvailabilityServiceWriter
-	CelestiaWriter celestia.DataAvailabilityWriter
+	CelestiaWriter celestiaTypes.DataAvailabilityWriter
 	ParentChainID  *big.Int
 }
 
