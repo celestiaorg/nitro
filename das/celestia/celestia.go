@@ -129,6 +129,8 @@ func NewCelestiaDA(cfg *DAConfig, ethClient *ethclient.Client) (*CelestiaDA, err
 		if err != nil {
 			return nil, err
 		}
+	} else {
+		readClient = daClient
 	}
 
 	if cfg.NamespaceId == "" {
@@ -361,19 +363,13 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, error) 
 
 func (c *CelestiaDA) Read(ctx context.Context, blobPointer *types.BlobPointer) ([]byte, *types.SquareData, error) {
 	// Wait until our client is synced
-	var celestiaClient *openrpc.Client
-	if c.ReadClient != nil {
-		celestiaClient = c.ReadClient
-	} else {
-		celestiaClient = c.Client
-	}
-	err := celestiaClient.Header.SyncWait(ctx)
+	err := c.ReadClient.Header.SyncWait(ctx)
 	if err != nil {
 		log.Error("trouble with client sync", "err", err)
 		return nil, nil, err
 	}
 
-	header, err := celestiaClient.Header.GetByHeight(ctx, blobPointer.BlockHeight)
+	header, err := c.ReadClient.Header.GetByHeight(ctx, blobPointer.BlockHeight)
 	if err != nil {
 		log.Error("could not fetch header", "err", err)
 		return nil, nil, err
@@ -385,7 +381,7 @@ func (c *CelestiaDA) Read(ctx context.Context, blobPointer *types.BlobPointer) (
 		return c.returnErrorHelper(fmt.Errorf("Data Root mismatch, header.DataHash=%v, blobPointer.DataRoot=%v", header.DataHash, hex.EncodeToString(blobPointer.DataRoot[:])))
 	}
 
-	proofs, err := celestiaClient.Blob.GetProof(ctx, blobPointer.BlockHeight, *c.Namespace, blobPointer.TxCommitment[:])
+	proofs, err := c.ReadClient.Blob.GetProof(ctx, blobPointer.BlockHeight, *c.Namespace, blobPointer.TxCommitment[:])
 	if err != nil {
 		return c.returnErrorHelper(fmt.Errorf("Error retrieving proof, err=%v", err))
 	}
@@ -399,14 +395,14 @@ func (c *CelestiaDA) Read(ctx context.Context, blobPointer *types.BlobPointer) (
 		return c.returnErrorHelper(fmt.Errorf("Share length mismatch, sharesLength=%v, blobPointer.SharesLength=%v", sharesLength, blobPointer.SharesLength))
 	}
 
-	blob, err := celestiaClient.Blob.Get(ctx, blobPointer.BlockHeight, *c.Namespace, blobPointer.TxCommitment[:])
+	blob, err := c.ReadClient.Blob.Get(ctx, blobPointer.BlockHeight, *c.Namespace, blobPointer.TxCommitment[:])
 	if err != nil {
 		// return an empty batch of data because we could not find the blob from the sequencer message
 		// we eventually manually reorg, setting ReorgOnReadFailure=true
 		return c.returnErrorHelper(fmt.Errorf("Failed to get blob, height=%v, commitment=%v, err=%v", blobPointer.BlockHeight, hex.EncodeToString(blobPointer.TxCommitment[:]), err))
 	}
 
-	eds, err := celestiaClient.Share.GetEDS(ctx, header)
+	eds, err := c.ReadClient.Share.GetEDS(ctx, header)
 	if err != nil {
 		return c.returnErrorHelper(fmt.Errorf("Failed to get EDS, height=%v, err=%v", blobPointer.BlockHeight, err))
 	}
@@ -477,15 +473,8 @@ func (c *CelestiaDA) GetProof(ctx context.Context, msg []byte) ([]byte, error) {
 		return nil, nil
 	}
 
-	var celestiaClient *openrpc.Client
-	if c.ReadClient != nil {
-		celestiaClient = c.ReadClient
-	} else {
-		celestiaClient = c.Client
-	}
-
 	// Get data root from a celestia node
-	header, err := celestiaClient.Header.GetByHeight(ctx, blobPointer.BlockHeight)
+	header, err := c.ReadClient.Header.GetByHeight(ctx, blobPointer.BlockHeight)
 	if err != nil {
 		celestiaValidationFailureCounter.Inc(1)
 		log.Warn("Header retrieval error", "err", err)
