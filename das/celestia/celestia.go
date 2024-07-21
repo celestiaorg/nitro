@@ -470,7 +470,7 @@ func (c *CelestiaDA) GetProof(ctx context.Context, msg []byte) ([]byte, error) {
 	if err != nil {
 		celestiaValidationFailureCounter.Inc(1)
 		log.Error("Couldn't unmarshal Celestia blob pointer", "err", err)
-		return nil, nil
+		return nil, err
 	}
 
 	// Get data root from a celestia node
