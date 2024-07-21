@@ -248,7 +248,7 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, error) 
 		celestiaLastNonDefaultGasprice.Update(gasPrice)
 	}
 
-	proofs, err := c.Client.Blob.GetProof(ctx, height, *c.Namespace, dataBlob.Commitment)
+	proofs, err := c.ReadClient.Blob.GetProof(ctx, height, *c.Namespace, dataBlob.Commitment)
 	if err != nil {
 		celestiaFailureCounter.Inc(1)
 		log.Warn("Error retrieving proof", "err", err)
@@ -259,7 +259,7 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, error) 
 	for proofs == nil {
 		log.Warn("Retrieved empty proof from GetProof, fetching again...", "proofRetries", proofRetries)
 		time.Sleep(time.Millisecond * 100)
-		proofs, err = c.Client.Blob.GetProof(ctx, height, *c.Namespace, dataBlob.Commitment)
+		proofs, err = c.ReadClient.Blob.GetProof(ctx, height, *c.Namespace, dataBlob.Commitment)
 		if err != nil {
 			celestiaFailureCounter.Inc(1)
 			log.Warn("Error retrieving proof", "err", err)
@@ -269,7 +269,7 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, error) 
 		celestiaBlobInclusionRetries.Inc(1)
 	}
 
-	included, err := c.Client.Blob.Included(ctx, height, *c.Namespace, proofs, dataBlob.Commitment)
+	included, err := c.ReadClient.Blob.Included(ctx, height, *c.Namespace, proofs, dataBlob.Commitment)
 	if err != nil || !included {
 		celestiaFailureCounter.Inc(1)
 		log.Warn("Error checking for inclusion", "err", err, "proof", proofs)
@@ -278,7 +278,7 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, error) 
 	log.Info("Succesfully posted blob", "height", height, "commitment", hex.EncodeToString(dataBlob.Commitment))
 
 	// we fetch the blob so that we can get the correct start index in the square
-	dataBlob, err = c.Client.Blob.Get(ctx, height, *c.Namespace, dataBlob.Commitment)
+	dataBlob, err = c.ReadClient.Blob.Get(ctx, height, *c.Namespace, dataBlob.Commitment)
 	if err != nil {
 		log.Warn("could not fetch blob", "err", err)
 		celestiaFailureCounter.Inc(1)
@@ -291,7 +291,7 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, error) 
 		return nil, errors.New("unexpected response code")
 	}
 
-	header, err := c.Client.Header.GetByHeight(ctx, height)
+	header, err := c.ReadClient.Header.GetByHeight(ctx, height)
 	if err != nil {
 		celestiaFailureCounter.Inc(1)
 		log.Warn("Header retrieval error", "err", err)
