@@ -32,7 +32,6 @@ require (
 	github.com/holiman/uint256 v1.2.4
 	github.com/ipfs/boxo v0.13.1
 	github.com/ipfs/go-cid v0.4.1
-	github.com/ipfs/go-libipfs v0.7.0
 	github.com/ipfs/interface-go-ipfs-core v0.11.0
 	github.com/ipfs/kubo v0.23.0
 	github.com/knadh/koanf v1.4.0
@@ -167,6 +166,7 @@ require (
 	github.com/ipfs/go-ipfs-blockstore v1.3.0 // indirect
 	github.com/ipfs/go-ipfs-delay v0.0.1 // indirect
 	github.com/ipfs/go-ipfs-ds-help v1.1.0 // indirect
+	github.com/ipfs/go-ipfs-files v0.3.0 // indirect
 	github.com/ipfs/go-ipfs-pq v0.0.3 // indirect
 	github.com/ipfs/go-ipfs-redirects-file v0.1.1 // indirect
 	github.com/ipfs/go-ipfs-util v0.0.3 // indirect

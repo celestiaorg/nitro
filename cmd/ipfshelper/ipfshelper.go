@@ -13,7 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	iface "github.com/ipfs/boxo/coreiface"
 	"github.com/ipfs/boxo/coreiface/options"
-	"github.com/ipfs/go-libipfs/files"
+	"github.com/ipfs/boxo/files"
 	"github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/ipfs/kubo/config"
 	"github.com/ipfs/kubo/core"

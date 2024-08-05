@@ -298,11 +298,6 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, error) 
 		return nil, err
 	}
 
-	sharesLength := uint64(0)
-	for _, proof := range *proofs {
-		sharesLength += uint64(proof.End()) - uint64(proof.Start())
-	}
-
 	txCommitment, dataRoot := [32]byte{}, [32]byte{}
 	copy(txCommitment[:], dataBlob.Commitment)
 
@@ -321,11 +316,28 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, error) 
 		// return an empty batch
 		return nil, fmt.Errorf("storing Celestia information, odsSize*startRow=%v was larger than blobIndex=%v", odsSize*startRow, dataBlob.Index())
 	}
+
+	startColumn := blobIndex % squareSize
+
+	firstShare, err := c.Client.Share.GetShare(ctx, header, int(startRow), int(startColumn))
+	if err != nil {
+		celestiaFailureCounter.Inc(1)
+		log.Warn("Failed to get first share for the blob", "err", err)
+		return nil, err
+	}
+
+	sharesLength, err := firstShare.SequenceLen()
+	if err != nil || sharesLength == 0 {
+		celestiaFailureCounter.Inc(1)
+		log.Warn("Failed to get blob sequence length", "err", err)
+		return nil, err
+	}
+
 	startIndexOds := blobIndex - odsSize*startRow
 	blobPointer := types.BlobPointer{
 		BlockHeight:  height,
 		Start:        startIndexOds,
-		SharesLength: sharesLength,
+		SharesLength: uint64(sharesLength),
 		TxCommitment: txCommitment,
 		DataRoot:     dataRoot,
 	}
