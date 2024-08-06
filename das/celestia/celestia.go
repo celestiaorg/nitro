@@ -319,7 +319,7 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, error) 
 
 	startColumn := blobIndex % squareSize
 
-	firstShare, err := c.Client.Share.GetShare(ctx, header, int(startRow), int(startColumn))
+	firstShare, err := c.ReadClient.Share.GetShare(ctx, header, int(startRow), int(startColumn))
 	if err != nil {
 		celestiaFailureCounter.Inc(1)
 		log.Warn("Failed to get first share for the blob", "err", err)
