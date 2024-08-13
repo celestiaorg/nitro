@@ -174,8 +174,10 @@ github.com/cavaliergopher/grab/v3 v3.0.1 h1:4z7TkBfmPjmLAAmkkAZNX/6QJ1nNFdv3SdIH
 github.com/cavaliergopher/grab/v3 v3.0.1/go.mod h1:1U/KNnD+Ft6JJiYoYBAimKH2XrYptb8Kl3DFGmsjpq4=
 github.com/celestiaorg/celestia-core v1.29.0-tm-v0.34.29 h1:Fd7ymPUzExPGNl2gZw4i5S74arMw+iDHLE78M/cCxl4=
 github.com/celestiaorg/celestia-core v1.29.0-tm-v0.34.29/go.mod h1:xrICN0PBhp3AdTaZ8q4wS5Jvi32V02HNjaC2EsWiEKk=
-github.com/celestiaorg/celestia-openrpc v0.4.1-0.20240603174346-256ddd020a0a h1:T9vsMQvvYvA/1FObT0eqL0J+XJJx/wG6Jzf+DH+IFxc=
-github.com/celestiaorg/celestia-openrpc v0.4.1-0.20240603174346-256ddd020a0a/go.mod h1:7kEhBB4KZh4vw3v5pMuMocNgYOk8uOpFZTo0cNpRjXc=
+github.com/celestiaorg/celestia-openrpc v0.4.1-0.20240813194139-2763b3a8a0d0 h1:5Gn9ROiWhl6rUuN/F7uHKBLEk13N9sGdYaIPWvwbzxc=
+github.com/celestiaorg/celestia-openrpc v0.4.1-0.20240813194139-2763b3a8a0d0/go.mod h1:7kEhBB4KZh4vw3v5pMuMocNgYOk8uOpFZTo0cNpRjXc=
+github.com/celestiaorg/celestia-openrpc v0.4.1-0.20240813195623-e38feb19b4c6 h1:dhkq67slPJf3zIoQVTCHd4Zz871FB+kg5WEa68X+YDQ=
+github.com/celestiaorg/celestia-openrpc v0.4.1-0.20240813195623-e38feb19b4c6/go.mod h1:7kEhBB4KZh4vw3v5pMuMocNgYOk8uOpFZTo0cNpRjXc=
 github.com/celestiaorg/go-fraud v0.2.0 h1:aaq2JiW0gTnhEdac3l51UCqSyJ4+VjFGTTpN83V4q7I=
 github.com/celestiaorg/go-fraud v0.2.0/go.mod h1:lNY1i4K6kUeeE60Z2VK8WXd+qXb8KRzfBhvwPkK6aUc=
 github.com/celestiaorg/go-header v0.4.1 h1:bjbUcKDnhrJJ9EoE7vtPpgleNLVjc2S+cB4/qe8nQmo=

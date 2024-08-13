@@ -319,18 +319,33 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, error) 
 
 	startColumn := blobIndex % squareSize
 
-	firstShare, err := c.ReadClient.Share.GetShare(ctx, header, int(startRow), int(startColumn))
+	nodeShare, err := c.ReadClient.Share.GetShare(ctx, header, int(startRow), int(startColumn))
 	if err != nil {
 		celestiaFailureCounter.Inc(1)
 		log.Warn("Failed to get first share for the blob", "err", err)
 		return nil, err
 	}
 
-	sharesLength, err := firstShare.SequenceLen()
-	if err != nil || sharesLength == 0 {
+	// need to convert to app share
+	firstShare, err := share.NewShare(*nodeShare)
+	if err != nil {
+		celestiaFailureCounter.Inc(1)
+		log.Warn("Failed to convert share to app share type", "err", err)
+		return nil, err
+	}
+	sequenceLength, err := firstShare.SequenceLen()
+	if err != nil {
 		celestiaFailureCounter.Inc(1)
 		log.Warn("Failed to get blob sequence length", "err", err)
 		return nil, err
+	}
+
+	sharesLength := share.SparseSharesNeeded(sequenceLength)
+
+	if sharesLength == 0 {
+		celestiaFailureCounter.Inc(1)
+		log.Warn("Shares length zero for blob", "err", err)
+		return nil, fmt.Errorf("Blob found, but has shares length zero")
 	}
 
 	startIndexOds := blobIndex - odsSize*startRow
@@ -393,20 +408,6 @@ func (c *CelestiaDA) Read(ctx context.Context, blobPointer *types.BlobPointer) (
 		return c.returnErrorHelper(fmt.Errorf("Data Root mismatch, header.DataHash=%v, blobPointer.DataRoot=%v", header.DataHash, hex.EncodeToString(blobPointer.DataRoot[:])))
 	}
 
-	proofs, err := c.ReadClient.Blob.GetProof(ctx, blobPointer.BlockHeight, *c.Namespace, blobPointer.TxCommitment[:])
-	if err != nil {
-		return c.returnErrorHelper(fmt.Errorf("Error retrieving proof, err=%v", err))
-	}
-
-	sharesLength := uint64(0)
-	for _, proof := range *proofs {
-		sharesLength += uint64(proof.End()) - uint64(proof.Start())
-	}
-
-	if sharesLength != blobPointer.SharesLength {
-		return c.returnErrorHelper(fmt.Errorf("Share length mismatch, sharesLength=%v, blobPointer.SharesLength=%v", sharesLength, blobPointer.SharesLength))
-	}
-
 	blob, err := c.ReadClient.Blob.Get(ctx, blobPointer.BlockHeight, *c.Namespace, blobPointer.TxCommitment[:])
 	if err != nil {
 		// return an empty batch of data because we could not find the blob from the sequencer message
@@ -448,6 +449,34 @@ func (c *CelestiaDA) Read(ctx context.Context, blobPointer *types.BlobPointer) (
 
 	if startRow == endRow && startColumn > endColumn {
 		return c.returnErrorHelper(fmt.Errorf("start and end row are the same and startColumn >= endColumn, startColumn=%v, endColumn+1=%v", startColumn, endColumn+1))
+	}
+
+	nodeShare, err := c.ReadClient.Share.GetShare(ctx, header, int(startRow), int(startColumn))
+	if err != nil {
+		celestiaFailureCounter.Inc(1)
+		log.Warn("Failed to get first share for the blob", "err", err)
+		return nil, nil, err
+	}
+
+	// need to convert to app share
+	firstShare, err := share.NewShare(*nodeShare)
+	if err != nil {
+		celestiaFailureCounter.Inc(1)
+		log.Warn("Failed to convert share to app share type", "err", err)
+		return nil, nil, err
+	}
+	sequenceLength, err := firstShare.SequenceLen()
+	if err != nil {
+		celestiaFailureCounter.Inc(1)
+		log.Warn("Failed to get blob sequence length", "err", err)
+		return nil, nil, err
+	}
+
+	sharesLength := share.SparseSharesNeeded(sequenceLength)
+
+	if uint64(sharesLength) != blobPointer.SharesLength || sharesLength == 0 {
+		celestiaFailureCounter.Inc(1)
+		return c.returnErrorHelper(fmt.Errorf("Share length mismatch, sharesLength=%v, blobPointer.SharesLength=%v", sharesLength, blobPointer.SharesLength))
 	}
 
 	rows := [][][]byte{}
