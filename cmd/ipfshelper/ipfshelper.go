@@ -11,13 +11,13 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/log"
-	iface "github.com/ipfs/boxo/coreiface"
-	"github.com/ipfs/boxo/coreiface/options"
 	"github.com/ipfs/boxo/files"
-	"github.com/ipfs/interface-go-ipfs-core/path"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/kubo/config"
 	"github.com/ipfs/kubo/core"
 	"github.com/ipfs/kubo/core/coreapi"
+	iface "github.com/ipfs/kubo/core/coreiface"
+	"github.com/ipfs/kubo/core/coreiface/options"
 	"github.com/ipfs/kubo/core/node/libp2p"
 	"github.com/ipfs/kubo/plugin/loader"
 	"github.com/ipfs/kubo/repo"
@@ -155,8 +155,11 @@ func normalizeCidString(cidString string) string {
 
 func (h *IpfsHelper) DownloadFile(ctx context.Context, cidString string, destinationDir string) (string, error) {
 	cidString = normalizeCidString(cidString)
-	cidPath := path.New(cidString)
-	resolvedPath, err := h.api.ResolvePath(ctx, cidPath)
+	cidPath, err := path.NewPath(cidString)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve cidPath: %w", err)
+	}
+	resolvedPath, _, err := h.api.ResolvePath(ctx, cidPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve path: %w", err)
 	}
@@ -180,7 +183,7 @@ func (h *IpfsHelper) DownloadFile(ctx context.Context, cidString string, destina
 	printProgress(0, len(links))
 	for i, j := range permutation {
 		link := links[j]
-		if err := h.api.Pin().Add(ctx, path.IpfsPath(link.Cid), options.Pin.Recursive(true)); err != nil {
+		if err := h.api.Pin().Add(ctx, path.FromCid(link.Cid), options.Pin.Recursive(true)); err != nil {
 			return "", fmt.Errorf("failed to pin child path: %w", err)
 		}
 		printProgress(i+1, len(links))
@@ -191,7 +194,7 @@ func (h *IpfsHelper) DownloadFile(ctx context.Context, cidString string, destina
 		return "", fmt.Errorf("could not get file with CID: %w", err)
 	}
 	log.Info("Writing file...")
-	outputFilePath := filepath.Join(destinationDir, resolvedPath.Cid().String())
+	outputFilePath := filepath.Join(destinationDir, resolvedPath.String())
 	_ = os.Remove(outputFilePath)
 	err = files.WriteTo(rootNodeDirectory, outputFilePath)
 	if err != nil {
@@ -201,14 +204,14 @@ func (h *IpfsHelper) DownloadFile(ctx context.Context, cidString string, destina
 	return outputFilePath, nil
 }
 
-func (h *IpfsHelper) AddFile(ctx context.Context, filePath string, includeHidden bool) (path.Resolved, error) {
+func (h *IpfsHelper) AddFile(ctx context.Context, filePath string, includeHidden bool) (path.ImmutablePath, error) {
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {
-		return nil, err
+		return path.ImmutablePath{}, err
 	}
 	fileNode, err := files.NewSerialFile(filePath, includeHidden, fileInfo)
 	if err != nil {
-		return nil, err
+		return path.ImmutablePath{}, err
 	}
 	return h.api.Unixfs().Add(ctx, fileNode)
 }
@@ -263,13 +266,12 @@ func createIpfsHelperImpl(ctx context.Context, downloadPath string, clientOnly b
 }
 
 func CanBeIpfsPath(pathString string) bool {
-	path := path.New(pathString)
-	return path.IsValid() == nil ||
-		strings.HasPrefix(pathString, "/ipfs/") ||
-		strings.HasPrefix(pathString, "/ipld/") ||
-		strings.HasPrefix(pathString, "/ipns/") ||
-		strings.HasPrefix(pathString, "ipfs://") ||
-		strings.HasPrefix(pathString, "ipns://")
+	_, err := path.NewPath(pathString)
+	if err != nil {
+		log.Error("Error creating path", "err", fmt.Errorf("failed to resolve cidPath: %w", err))
+		return false
+	}
+	return true
 }
 
 // TODO break abstraction for now til we figure out what fns are needed

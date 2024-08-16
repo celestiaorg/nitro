@@ -21,10 +21,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
-	iface "github.com/ipfs/boxo/coreiface"
-	"github.com/ipfs/boxo/coreiface/options"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/interface-go-ipfs-core/path"
+	iface "github.com/ipfs/kubo/core/coreiface"
+	"github.com/ipfs/kubo/core/coreiface/options"
 	"github.com/multiformats/go-multihash"
 	"github.com/offchainlabs/nitro/arbstate"
 	"github.com/offchainlabs/nitro/cmd/ipfshelper"
@@ -125,7 +125,7 @@ func (s *IpfsStorageService) GetByHash(ctx context.Context, hash common.Hash) ([
 			return nil, err
 		}
 
-		ipfsPath := path.IpfsPath(thisCid)
+		ipfsPath := path.FromCid(thisCid)
 		log.Trace("Retrieving IPFS path", "path", ipfsPath.String())
 
 		parentCtx := ctx

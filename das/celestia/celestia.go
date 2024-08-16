@@ -217,7 +217,10 @@ func (c *CelestiaDA) Store(ctx context.Context, message []byte) ([]byte, error) 
 	// this will trigger node to use the default gas price from celestia app
 	gasPrice := -1.0
 	for !submitted {
-		height, err = c.Client.Blob.Submit(ctx, []*blob.Blob{dataBlob}, gasPrice)
+		// add submit options
+		submitOptions := &blob.SubmitOptions{}
+		blob.WithGasPrice(gasPrice)(submitOptions)
+		height, err = c.Client.Blob.Submit(ctx, []*blob.Blob{dataBlob}, submitOptions)
 		if err != nil {
 			switch {
 			case strings.Contains(err.Error(), ErrTxTimedout.Error()), strings.Contains(err.Error(), ErrTxAlreadyInMempool.Error()), strings.Contains(err.Error(), ErrTxIncorrectAccountSequence.Error()):
