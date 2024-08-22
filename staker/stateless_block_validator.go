@@ -28,6 +28,7 @@ import (
 	"github.com/offchainlabs/nitro/arbos/arbostypes"
 	"github.com/offchainlabs/nitro/validator/client/redis"
 
+	celestiaTypes "github.com/offchainlabs/nitro/das/celestia/types"
 	validatorclient "github.com/offchainlabs/nitro/validator/client"
 )
 
@@ -324,6 +325,8 @@ func (v *StatelessBlockValidator) ValidationEntryRecord(ctx context.Context, e *
 		if !foundDA {
 			if daprovider.IsDASMessageHeaderByte(batch.Data[40]) {
 				log.Error("No DAS Reader configured, but sequencer message found with DAS header")
+			} else if celestiaTypes.IsCelestiaMessageHeaderByte(batch.Data[40]) {
+				log.Error("No Celestia Reader configured, but sequencer message found with Celestia header")
 			}
 		}
 	}
