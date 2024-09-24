@@ -25,6 +25,8 @@ require (
 	github.com/dgraph-io/badger/v4 v4.2.0
 	github.com/enescakir/emoji v1.0.0
 	github.com/ethereum/go-ethereum v1.13.15
+	github.com/celestiaorg/nmt v0.20.0
+	github.com/celestiaorg/rsmt2d v0.11.0
 	github.com/fatih/structtag v1.2.0
 	github.com/gdamore/tcell/v2 v2.7.1
 	github.com/gobwas/httphead v0.1.0
@@ -45,6 +47,7 @@ require (
 	github.com/rivo/tview v0.0.0-20240307173318-e804876934a1
 	github.com/spf13/pflag v1.0.5
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
+	github.com/tendermint/tendermint v0.34.29
 	github.com/wealdtech/go-merkletree v1.0.0
 	golang.org/x/crypto v0.24.0
 	golang.org/x/sys v0.21.0
@@ -156,6 +159,8 @@ require (
 	github.com/juju/errors v0.0.0-20181118221551-089d3ea4e4d5 // indirect
 	github.com/juju/loggo v0.0.0-20180524022052-584905176618 // indirect
 	github.com/klauspost/compress v1.17.2 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
+	github.com/klauspost/reedsolomon v1.11.8 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
@@ -169,18 +174,19 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/mmcloughlin/addchain v0.4.0 // indirect
 	github.com/olekukonko/tablewriter v0.0.5 // indirect
-	github.com/opentracing/opentracing-go v1.1.0 // indirect
+	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/prometheus/client_golang v1.14.0 // indirect
 	github.com/prometheus/client_model v0.4.0 // indirect
 	github.com/prometheus/common v0.39.0 // indirect
 	github.com/prometheus/procfs v0.9.0 // indirect
 	github.com/rhnvrm/simples3 v0.6.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/rogpeppe/go-internal v1.9.0 // indirect
-	github.com/rs/cors v1.7.0 // indirect
+	github.com/rogpeppe/go-internal v1.12.0 // indirect
+	github.com/rs/cors v1.8.2 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/shirou/gopsutil v3.21.11+incompatible // indirect
 	github.com/status-im/keycard-go v0.2.0 // indirect
+	github.com/stretchr/testify v1.9.0 // indirect
 	github.com/supranational/blst v0.3.11 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
@@ -200,4 +206,9 @@ require (
 	golang.org/x/time v0.5.0 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
+)
+
+replace (
+	github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
+	github.com/tendermint/tendermint => github.com/celestiaorg/celestia-core v1.29.0-tm-v0.34.29
 )
