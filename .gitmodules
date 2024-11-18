@@ -22,7 +22,7 @@
 	url = https://github.com/OffchainLabs/wasmer.git
 [submodule "nitro-testnode"]
 	path = nitro-testnode
-	url = https://github.com/OffchainLabs/nitro-testnode.git
+	url = https://github.com/celestiaorg/nitro-testnode
 [submodule "arbitrator/langs/rust"]
 	path = arbitrator/langs/rust
 	url = https://github.com/OffchainLabs/stylus-sdk-rs.git
