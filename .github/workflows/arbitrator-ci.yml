@@ -22,13 +22,16 @@ on:
 
 env:
   RUST_BACKTRACE: 1
-  # RUSTFLAGS: -Dwarnings            # TODO: re-enable after wasmer upgrade
+  RUSTFLAGS: -Dwarnings # TODO: re-enable after wasmer upgrade
   WABT_VERSION: 1.0.32
 
 jobs:
   arbitrator:
     name: Run Arbitrator tests
-    runs-on: ubuntu-8
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
     steps:
       - name: Setup tmate session
         uses: mxschmitt/action-tmate@v3
@@ -143,13 +146,9 @@ jobs:
         if: steps.cache-cbrotli.outputs.cache-hit != 'true'
         uses: mymindstorm/setup-emsdk@v12
         with:
-          # Make sure to set a version number!
           version: 3.1.6
-          # This is the name of the cache folder.
-          # The cache folder will be placed in the build directory,
-          #  so make sure it doesn't conflict with anything!
-          actions-cache-folder: "emsdk-cache"
-          no-cache: true
+          actions-cache-folder: "emsdk-cache-${{ github.run_id }}"
+          no-cache: false
 
       - name: Build cbrotli-wasm
         if: steps.cache-cbrotli.outputs.cache-hit != 'true'
@@ -159,7 +158,7 @@ jobs:
         run: echo "$HOME/wabt-prefix/bin" >> "$GITHUB_PATH"
 
       - name: Make arbitrator libraries
-        run: make -j wasm-ci-build
+        run: RUSTFLAGS="-A warnings" make -j wasm-ci-build
 
       - name: Clippy check
         run: cargo clippy --all --manifest-path arbitrator/Cargo.toml -- -D warnings
