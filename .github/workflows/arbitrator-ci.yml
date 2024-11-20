@@ -28,7 +28,7 @@ env:
 jobs:
   arbitrator:
     name: Run Arbitrator tests
-    runs-on: gh-shr-optimism
+    runs-on: self-hosted
     steps:
       - name: Setup tmate session
         uses: mxschmitt/action-tmate@v3
