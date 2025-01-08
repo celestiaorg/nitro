@@ -80,6 +80,8 @@ type Config struct {
 	ResourceMgmt             resourcemanager.Config         `koanf:"resource-mgmt" reload:"hot"`
 	BlockMetadataFetcher     BlockMetadataFetcherConfig     `koanf:"block-metadata-fetcher" reload:"hot"`
 	ConsensusExecutionSyncer ConsensusExecutionSyncerConfig `koanf:"consensus-execution-syncer"`
+	Celestia                 celestia.CelestiaConfig        `koanf:"celestia-cfg"`
+	DAPreference             []string                       `koanf:"da-preference"`
 	// SnapSyncConfig is only used for testing purposes, these should not be configured in production.
 	SnapSyncTest SnapSyncConfig
 }
@@ -152,7 +154,7 @@ func ConfigAddOptions(prefix string, f *flag.FlagSet, feedInputEnable bool, feed
 	MaintenanceConfigAddOptions(prefix+".maintenance", f)
 	resourcemanager.ConfigAddOptions(prefix+".resource-mgmt", f)
 	BlockMetadataFetcherConfigAddOptions(prefix+".block-metadata-fetcher", f)
-	ConsensusExecutionSyncerConfigAddOptions(prefix+".consensus-execution-syncer", f)
+	celestia.CelestiaDAConfigAddOptions(prefix+".celestia-cfg", f)
 }
 
 var ConfigDefault = Config{
@@ -622,6 +624,16 @@ func getDAS(
 		return nil, nil, nil, errors.New("a data availability service is required for this chain, but it was not configured")
 	}
 
+	if config.Celestia.Enable {
+		celestiaService, err := celestia.NewCelestiaDASRPCClient(config.Celestia.URL)
+		if err != nil {
+			return nil, err
+		}
+
+		celestiaReader = celestiaService
+		celestiaWriter = celestiaService
+	}
+
 	// We support a nil txStreamer for the pruning code
 	if txStreamer != nil && txStreamer.chainConfig.ArbitrumChainParams.DataAvailabilityCommittee && daClient == nil {
 		return nil, nil, nil, errors.New("data availability service required but unconfigured")
@@ -931,7 +943,7 @@ func getBatchPoster(
 			Config:        func() *BatchPosterConfig { return &configFetcher.Get().BatchPoster },
 			DeployInfo:    deployInfo,
 			TransactOpts:  txOptsBatchPoster,
-			DAPWriter:     dapWriter,
+			DAPWriters:    dapWriters,
 			ParentChainID: parentChainID,
 			DAPReaders:    dapReaders,
 		})
