@@ -317,6 +317,10 @@ func (v *StatelessBlockValidator) BOLDExecutionSpawners() []validator.BOLDExecut
 	return v.boldExecSpawners
 }
 
+func (v *StatelessBlockValidator) DapReaders() []daprovider.Reader {
+	return v.dapReaders
+}
+
 func (v *StatelessBlockValidator) readFullBatch(ctx context.Context, batchNum uint64) (bool, *FullBatchInfo, error) {
 	batchCount, err := v.inboxTracker.GetBatchCount()
 	if err != nil {
