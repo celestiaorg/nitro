@@ -42,10 +42,10 @@ WORKDIR /workspace
 RUN apt-get update && apt-get install -y curl build-essential=12.9
 
 FROM wasm-base AS wasm-libs-builder
-	# clang / lld used by soft-float wasm
+# clang / lld used by soft-float wasm
 RUN apt-get update && \
     apt-get install -y clang=1:14.0-55.7~deb12u1 lld=1:14.0-55.7~deb12u1 wabt
-    # pinned rust 1.80.1
+# pinned rust 1.80.1
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.80.1 --target x86_64-unknown-linux-gnu wasm32-unknown-unknown wasm32-wasi
 COPY ./Makefile ./
 COPY arbitrator/Cargo.* arbitrator/
@@ -77,6 +77,7 @@ COPY ./blsSignatures ./blsSignatures
 COPY ./cmd/chaininfo ./cmd/chaininfo
 COPY ./cmd/replay ./cmd/replay
 COPY ./das/dastree ./das/dastree
+COPY ./das/celestia ./das/celestia
 COPY ./precompiles ./precompiles
 COPY ./statetransfer ./statetransfer
 COPY ./util ./util
@@ -90,6 +91,7 @@ COPY ./fastcache ./fastcache
 COPY ./go-ethereum ./go-ethereum
 COPY --from=brotli-wasm-export / target/
 COPY --from=contracts-builder workspace/contracts/build/contracts/src/precompiles/ contracts/build/contracts/src/precompiles/
+COPY --from=contracts-builder workspace/contracts/build/contracts/src/celestia/ contracts/build/contracts/src/celestia/
 COPY --from=contracts-builder workspace/contracts/node_modules/@offchainlabs/upgrade-executor/build/contracts/src/UpgradeExecutor.sol/UpgradeExecutor.json contracts/
 COPY --from=contracts-builder workspace/.make/ .make/
 RUN PATH="$PATH:/usr/local/go/bin" NITRO_BUILD_IGNORE_TIMESTAMPS=1 make build-wasm-bin
@@ -219,6 +221,8 @@ COPY ./scripts/download-machine.sh .
 RUN ./download-machine.sh consensus-v30 0xb0de9cb89e4d944ae6023a3b62276e54804c242fd8c4c2d8e6cc4450f5fa8b1b && true
 RUN ./download-machine.sh consensus-v31 0x260f5fa5c3176a856893642e149cf128b5a8de9f828afec8d11184415dd8dc69
 RUN ./download-machine.sh consensus-v32 0x184884e1eb9fefdc158f6c8ac912bb183bf3cf83f0090317e0bc4ac5860baa39
+RUN ./download-machine.sh v3.2.1-rc.1 0xe81f986823a85105c5fd91bb53b4493d38c0c26652d23f76a7405ac889908287 celestiaorg
+RUN ./download-machine.sh v3.3.2 0xaf1dbdfceb871c00bfbb1675983133df04f0ed04e89647812513c091e3a982b3 celestiaorg
 
 FROM golang:1.23.1-bookworm AS node-builder
 WORKDIR /workspace
