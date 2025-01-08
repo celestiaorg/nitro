@@ -634,6 +634,16 @@ func getDAS(
 		celestiaWriter = celestiaService
 	}
 
+	if config.Celestia.Enable {
+		celestiaService, err := celestia.NewCelestiaDASRPCClient(config.Celestia.URL)
+		if err != nil {
+			return nil, err
+		}
+
+		celestiaReader = celestiaService
+		celestiaWriter = celestiaService
+	}
+
 	// We support a nil txStreamer for the pruning code
 	if txStreamer != nil && txStreamer.chainConfig.ArbitrumChainParams.DataAvailabilityCommittee && daClient == nil {
 		return nil, nil, nil, errors.New("data availability service required but unconfigured")
