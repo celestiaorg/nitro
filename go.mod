@@ -20,13 +20,14 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.27
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.64.1
 	github.com/cavaliergopher/grab/v3 v3.0.1
+	github.com/ccoveille/go-safecast v1.1.0
+	github.com/celestiaorg/nmt v0.20.0
+	github.com/celestiaorg/rsmt2d v0.11.0
 	github.com/cockroachdb/pebble v1.1.0
 	github.com/codeclysm/extract/v3 v3.0.2
 	github.com/dgraph-io/badger/v4 v4.2.0
 	github.com/enescakir/emoji v1.0.0
 	github.com/ethereum/go-ethereum v1.13.15
-	github.com/celestiaorg/nmt v0.20.0
-	github.com/celestiaorg/rsmt2d v0.11.0
 	github.com/fatih/structtag v1.2.0
 	github.com/gdamore/tcell/v2 v2.7.1
 	github.com/gobwas/httphead v0.1.0
@@ -39,7 +40,7 @@ require (
 	github.com/holiman/uint256 v1.2.4
 	github.com/knadh/koanf v1.4.0
 	github.com/mailru/easygo v0.0.0-20190618140210-3c14a0dc985f
-	github.com/mitchellh/mapstructure v1.4.1
+	github.com/mitchellh/mapstructure v1.5.0
 	github.com/offchainlabs/bold v0.0.0-00010101000000-000000000000
 	github.com/pkg/errors v0.9.1
 	github.com/r3labs/diff/v3 v3.0.1
@@ -63,7 +64,7 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.2.2 // indirect
 	cloud.google.com/go/compute/metadata v0.3.0 // indirect
 	cloud.google.com/go/iam v1.1.8 // indirect
-	github.com/ccoveille/go-safecast v1.1.0 // indirect
+	github.com/celestiaorg/merkletree v0.0.0-20210714075610-a84dc3ddbbe4 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -186,7 +187,6 @@ require (
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/shirou/gopsutil v3.21.11+incompatible // indirect
 	github.com/status-im/keycard-go v0.2.0 // indirect
-	github.com/stretchr/testify v1.9.0 // indirect
 	github.com/supranational/blst v0.3.11 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect

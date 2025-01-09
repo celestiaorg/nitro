@@ -606,7 +606,7 @@ func (m *ChallengeManager) getDAProof(ctx context.Context, proof []byte) ([]byte
 			// Read the last 8 bytes as a uint64 to get our batch number
 			batchNumBytes := proof[len(proof)-8:]
 			batchNum := binary.BigEndian.Uint64(batchNumBytes)
-			batchData, _, err := m.validator.inboxReader.GetSequencerMessageBytes(ctx, batchNum)
+			batchData, _, err := m.validator.InboxReader().GetSequencerMessageBytes(ctx, batchNum)
 			if err != nil {
 				log.Error("Couldn't get sequencer message bytes", "err", err)
 				return nil, err
@@ -625,7 +625,7 @@ func (m *ChallengeManager) getDAProof(ctx context.Context, proof []byte) ([]byte
 				blobBytes := buf.Bytes()
 
 				var celestiaReader celestiaTypes.CelestiaReader
-				for _, dapReader := range m.validator.dapReaders {
+				for _, dapReader := range m.validator.DapReaders() {
 					switch reader := dapReader.(type) {
 					case celestiaTypes.CelestiaReader:
 						celestiaReader = reader
