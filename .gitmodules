@@ -22,7 +22,7 @@
 	url = https://github.com/OffchainLabs/wasmer.git
 [submodule "nitro-testnode"]
 	path = nitro-testnode
-	url = https://github.com/OffchainLabs/nitro-testnode.git
+	url = https://github.com/celestiaorg/nitro-testnode.git
 [submodule "bold"]
 	path = bold
 	url = https://github.com/OffchainLabs/bold.git
