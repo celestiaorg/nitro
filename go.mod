@@ -44,7 +44,7 @@ require (
 	github.com/knadh/koanf v1.4.0
 	github.com/mailru/easygo v0.0.0-20190618140210-3c14a0dc985f
 	github.com/mattn/go-sqlite3 v1.14.22
-	github.com/mitchellh/mapstructure v1.4.1
+	github.com/mitchellh/mapstructure v1.5.0
 	github.com/offchainlabs/bold v0.0.0-00010101000000-000000000000
 	github.com/pkg/errors v0.9.1
 	github.com/r3labs/diff/v3 v3.0.1
@@ -70,6 +70,7 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.2.2 // indirect
 	cloud.google.com/go/compute/metadata v0.3.0 // indirect
 	cloud.google.com/go/iam v1.1.8 // indirect
+	github.com/celestiaorg/merkletree v0.0.0-20210714075610-a84dc3ddbbe4 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
