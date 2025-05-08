@@ -39,5 +39,5 @@
 	path = safe-smart-account
 	url = https://github.com/safe-global/safe-smart-account.git
 [submodule "contracts-legacy"]
-	path = contracts-legacy
+	path = v2-main
 	url = https://github.com/OffchainLabs/nitro-contracts.git
