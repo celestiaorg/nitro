@@ -566,3 +566,51 @@ func (n *ExecutionNode) InitializeTimeboost(ctx context.Context, chainConfig *pa
 
 	return nil
 }
+
+func (n *ExecutionNode) InitializeTimeboost(ctx context.Context, chainConfig *params.ChainConfig) error {
+	execNodeConfig := n.ConfigFetcher()
+	if execNodeConfig.Sequencer.Timeboost.Enable {
+		auctionContractAddr := common.HexToAddress(execNodeConfig.Sequencer.Timeboost.AuctionContractAddress)
+
+		auctionContract, err := NewExpressLaneAuctionFromInternalAPI(
+			n.Backend.APIBackend(),
+			n.FilterSystem,
+			auctionContractAddr)
+		if err != nil {
+			return err
+		}
+
+		roundTimingInfo, err := GetRoundTimingInfo(auctionContract)
+		if err != nil {
+			return err
+		}
+
+		expressLaneTracker := NewExpressLaneTracker(
+			*roundTimingInfo,
+			execNodeConfig.Sequencer.MaxBlockSpeed,
+			n.Backend.APIBackend(),
+			auctionContract,
+			auctionContractAddr,
+			chainConfig,
+			execNodeConfig.Sequencer.Timeboost.EarlySubmissionGrace,
+		)
+
+		n.TxPreChecker.SetExpressLaneTracker(expressLaneTracker)
+
+		if execNodeConfig.Sequencer.Enable {
+			err := n.Sequencer.InitializeExpressLaneService(
+				common.HexToAddress(execNodeConfig.Sequencer.Timeboost.AuctioneerAddress),
+				roundTimingInfo,
+				expressLaneTracker,
+			)
+			if err != nil {
+				log.Error("failed to create express lane service", "err", err)
+			}
+			n.Sequencer.StartExpressLaneService(ctx)
+		}
+
+		expressLaneTracker.Start(ctx)
+	}
+
+	return nil
+}

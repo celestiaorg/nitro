@@ -36,6 +36,8 @@ import (
 	"github.com/offchainlabs/nitro/broadcaster"
 	"github.com/offchainlabs/nitro/cmd/chaininfo"
 	"github.com/offchainlabs/nitro/das"
+	"github.com/offchainlabs/nitro/das/celestia"
+	celestiaTypes "github.com/offchainlabs/nitro/das/celestia/types"
 	"github.com/offchainlabs/nitro/execution"
 	"github.com/offchainlabs/nitro/execution/gethexec"
 	"github.com/offchainlabs/nitro/solgen/go/bridgegen"
@@ -74,6 +76,8 @@ type Config struct {
 	ResourceMgmt             resourcemanager.Config         `koanf:"resource-mgmt" reload:"hot"`
 	BlockMetadataFetcher     BlockMetadataFetcherConfig     `koanf:"block-metadata-fetcher" reload:"hot"`
 	ConsensusExecutionSyncer ConsensusExecutionSyncerConfig `koanf:"consensus-execution-syncer"`
+	Celestia                 celestia.CelestiaConfig        `koanf:"celestia-cfg"`
+	DAPreference             []string                       `koanf:"da-preference"`
 	// SnapSyncConfig is only used for testing purposes, these should not be configured in production.
 	SnapSyncTest SnapSyncConfig
 }
@@ -145,6 +149,7 @@ func ConfigAddOptions(prefix string, f *flag.FlagSet, feedInputEnable bool, feed
 	MaintenanceConfigAddOptions(prefix+".maintenance", f)
 	BlockMetadataFetcherConfigAddOptions(prefix+".block-metadata-fetcher", f)
 	ConsensusExecutionSyncerConfigAddOptions(prefix+".consensus-execution-syncer", f)
+	celestia.CelestiaDAConfigAddOptions(prefix+".celestia-cfg", f)
 }
 
 var ConfigDefault = Config{
@@ -560,6 +565,8 @@ func getDAS(
 	var daReader das.DataAvailabilityServiceReader
 	var dasLifecycleManager *das.LifecycleManager
 	var dasKeysetFetcher *das.KeysetFetcher
+	var celestiaReader celestiaTypes.CelestiaReader
+	var celestiaWriter celestiaTypes.CelestiaWriter
 	if config.DataAvailability.Enable {
 		var err error
 		if config.BatchPoster.Enable {
@@ -586,6 +593,16 @@ func getDAS(
 		return nil, nil, nil, errors.New("a data availability service is required for this chain, but it was not configured")
 	}
 
+	if config.Celestia.Enable {
+		celestiaService, err := celestia.NewCelestiaDASRPCClient(config.Celestia.URL)
+		if err != nil {
+			return nil, err
+		}
+
+		celestiaReader = celestiaService
+		celestiaWriter = celestiaService
+	}
+
 	// We support a nil txStreamer for the pruning code
 	if txStreamer != nil && txStreamer.chainConfig.ArbitrumChainParams.DataAvailabilityCommittee && daReader == nil {
 		return nil, nil, nil, errors.New("data availability service required but unconfigured")
@@ -596,6 +613,9 @@ func getDAS(
 	}
 	if blobReader != nil {
 		dapReaders = append(dapReaders, daprovider.NewReaderForBlobReader(blobReader))
+	}
+	if celestiaReader != nil {
+		dapReaders = append(dapReaders, celestiaTypes.NewReaderForCelestia(celestiaReader))
 	}
 
 	return daWriter, dasLifecycleManager, dapReaders, nil
@@ -878,9 +898,29 @@ func getBatchPoster(
 		if txOptsBatchPoster == nil && config.BatchPoster.DataPoster.ExternalSigner.URL == "" {
 			return nil, errors.New("batchposter, but no TxOpts")
 		}
-		var dapWriter daprovider.Writer
-		if daWriter != nil {
-			dapWriter = daprovider.NewWriterForDAS(daWriter)
+		dapWriters := []daprovider.Writer{}
+		for _, providerName := range config.DAPreference {
+			nilWriter := false
+			switch strings.ToLower(providerName) {
+			case "anytrust":
+				log.Info("Adding DapWriter", "type", "anytrust")
+				if daWriter != nil {
+					dapWriters = append(dapWriters, daprovider.NewWriterForDAS(daWriter))
+				} else {
+					nilWriter = true
+				}
+			case "celestia":
+				log.Info("Adding DapWriter", "type", "celestia")
+				if celestiaWriter != nil {
+					dapWriters = append(dapWriters, celestiaTypes.NewWriterForCelestia(celestiaWriter))
+				} else {
+					nilWriter = true
+				}
+			}
+
+			if nilWriter {
+				log.Error("encountered nil daWriter", "daWriter", providerName)
+			}
 		}
 		var err error
 		batchPoster, err = NewBatchPoster(ctx, &BatchPosterOpts{
@@ -893,7 +933,7 @@ func getBatchPoster(
 			Config:        func() *BatchPosterConfig { return &configFetcher.Get().BatchPoster },
 			DeployInfo:    deployInfo,
 			TransactOpts:  txOptsBatchPoster,
-			DAPWriter:     dapWriter,
+			DAPWriters:    dapWriters,
 			ParentChainID: parentChainID,
 			DAPReaders:    dapReaders,
 		})
