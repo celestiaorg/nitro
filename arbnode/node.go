@@ -550,7 +550,7 @@ func getDelayedBridgeAndSequencerInbox(
 	return delayedBridge, sequencerInbox, nil
 }
 
-func getDAS(
+func getDapWriters(
 	ctx context.Context,
 	config *Config,
 	l2Config *params.ChainConfig,
@@ -560,7 +560,7 @@ func getDAS(
 	deployInfo *chaininfo.RollupAddresses,
 	dataSigner signature.DataSignerFunc,
 	l1client *ethclient.Client,
-) (das.DataAvailabilityServiceWriter, *das.LifecycleManager, []daprovider.Reader, error) {
+) ([]daprovider.Writer, *das.LifecycleManager, []daprovider.Reader, error) {
 	var daWriter das.DataAvailabilityServiceWriter
 	var daReader das.DataAvailabilityServiceReader
 	var dasLifecycleManager *das.LifecycleManager
@@ -596,7 +596,7 @@ func getDAS(
 	if config.Celestia.Enable {
 		celestiaService, err := celestia.NewCelestiaDASRPCClient(config.Celestia.URL)
 		if err != nil {
-			return nil, err
+			return nil, nil, nil, err
 		}
 
 		celestiaReader = celestiaService
@@ -618,7 +618,32 @@ func getDAS(
 		dapReaders = append(dapReaders, celestiaTypes.NewReaderForCelestia(celestiaReader))
 	}
 
-	return daWriter, dasLifecycleManager, dapReaders, nil
+	dapWriters := []daprovider.Writer{}
+	for _, providerName := range config.DAPreference {
+		nilWriter := false
+		switch strings.ToLower(providerName) {
+		case "anytrust":
+			log.Info("Adding DapWriter", "type", "anytrust")
+			if daWriter != nil {
+				dapWriters = append(dapWriters, daprovider.NewWriterForDAS(daWriter))
+			} else {
+				nilWriter = true
+			}
+		case "celestia":
+			log.Info("Adding DapWriter", "type", "celestia")
+			if celestiaWriter != nil {
+				dapWriters = append(dapWriters, celestiaTypes.NewWriterForCelestia(celestiaWriter))
+			} else {
+				nilWriter = true
+			}
+		}
+
+		if nilWriter {
+			log.Error("encountered nil daWriter", "daWriter", providerName)
+		}
+	}
+
+	return dapWriters, dasLifecycleManager, dapReaders, nil
 }
 
 func getInboxTrackerAndReader(
@@ -877,7 +902,7 @@ func getBatchPoster(
 	config *Config,
 	configFetcher ConfigFetcher,
 	txOptsBatchPoster *bind.TransactOpts,
-	daWriter das.DataAvailabilityServiceWriter,
+	dapWriters []daprovider.Writer,
 	l1Reader *headerreader.HeaderReader,
 	inboxTracker *InboxTracker,
 	txStreamer *TransactionStreamer,
@@ -897,30 +922,6 @@ func getBatchPoster(
 
 		if txOptsBatchPoster == nil && config.BatchPoster.DataPoster.ExternalSigner.URL == "" {
 			return nil, errors.New("batchposter, but no TxOpts")
-		}
-		dapWriters := []daprovider.Writer{}
-		for _, providerName := range config.DAPreference {
-			nilWriter := false
-			switch strings.ToLower(providerName) {
-			case "anytrust":
-				log.Info("Adding DapWriter", "type", "anytrust")
-				if daWriter != nil {
-					dapWriters = append(dapWriters, daprovider.NewWriterForDAS(daWriter))
-				} else {
-					nilWriter = true
-				}
-			case "celestia":
-				log.Info("Adding DapWriter", "type", "celestia")
-				if celestiaWriter != nil {
-					dapWriters = append(dapWriters, celestiaTypes.NewWriterForCelestia(celestiaWriter))
-				} else {
-					nilWriter = true
-				}
-			}
-
-			if nilWriter {
-				log.Error("encountered nil daWriter", "daWriter", providerName)
-			}
 		}
 		var err error
 		batchPoster, err = NewBatchPoster(ctx, &BatchPosterOpts{
@@ -1094,7 +1095,7 @@ func createNodeImpl(
 		return nil, err
 	}
 
-	daWriter, dasLifecycleManager, dapReaders, err := getDAS(ctx, config, l2Config, txStreamer, blobReader, l1Reader, deployInfo, dataSigner, l1client)
+	dapWriters, dasLifecycleManager, dapReaders, err := getDapWriters(ctx, config, l2Config, txStreamer, blobReader, l1Reader, deployInfo, dataSigner, l1client)
 	if err != nil {
 		return nil, err
 	}
@@ -1119,7 +1120,7 @@ func createNodeImpl(
 		return nil, err
 	}
 
-	batchPoster, err := getBatchPoster(ctx, config, configFetcher, txOptsBatchPoster, daWriter, l1Reader, inboxTracker, txStreamer, executionBatchPoster, arbDb, syncMonitor, deployInfo, parentChainID, dapReaders, stakerAddr)
+	batchPoster, err := getBatchPoster(ctx, config, configFetcher, txOptsBatchPoster, dapWriters, l1Reader, inboxTracker, txStreamer, executionBatchPoster, arbDb, syncMonitor, deployInfo, parentChainID, dapReaders, stakerAddr)
 	if err != nil {
 		return nil, err
 	}
