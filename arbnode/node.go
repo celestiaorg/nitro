@@ -622,16 +622,6 @@ func getDAS(
 		return nil, nil, nil, errors.New("a data availability service is required for this chain, but it was not configured")
 	}
 
-	if config.Celestia.Enable {
-		celestiaService, err := celestia.NewCelestiaDASRPCClient(config.Celestia.URL)
-		if err != nil {
-			return nil, err
-		}
-
-		celestiaReader = celestiaService
-		celestiaWriter = celestiaService
-	}
-
 	// We support a nil txStreamer for the pruning code
 	if txStreamer != nil && txStreamer.chainConfig.ArbitrumChainParams.DataAvailabilityCommittee && daClient == nil {
 		return nil, nil, nil, errors.New("data availability service required but unconfigured")
