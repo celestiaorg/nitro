@@ -25,7 +25,6 @@ import (
 	"github.com/offchainlabs/nitro/arbnode"
 	"github.com/offchainlabs/nitro/arbnode/dataposter"
 	"github.com/offchainlabs/nitro/arbnode/dataposter/externalsignertest"
-	"github.com/offchainlabs/nitro/arbstate/daprovider"
 	"github.com/offchainlabs/nitro/solgen/go/upgrade_executorgen"
 	"github.com/offchainlabs/nitro/util/redisutil"
 )
@@ -148,7 +147,7 @@ func testBatchPosterParallel(t *testing.T, useRedis bool) {
 				Config:        func() *arbnode.BatchPosterConfig { return &batchPosterConfig },
 				DeployInfo:    builder.L2.ConsensusNode.DeployInfo,
 				TransactOpts:  &seqTxOpts,
-				DAPWriters:    []daprovider.Writer{},
+				DAPWriter:     nil,
 				ParentChainID: parentChainID,
 			},
 		)

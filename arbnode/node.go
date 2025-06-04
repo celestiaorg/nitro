@@ -930,7 +930,7 @@ func getBatchPoster(
 			Config:        func() *BatchPosterConfig { return &configFetcher.Get().BatchPoster },
 			DeployInfo:    deployInfo,
 			TransactOpts:  txOptsBatchPoster,
-			DAPWriters:    dapWriters,
+			DAPWriter:     dapWriter,
 			ParentChainID: parentChainID,
 			DAPReaders:    dapReaders,
 		})
