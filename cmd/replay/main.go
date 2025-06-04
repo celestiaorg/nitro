@@ -34,10 +34,10 @@ import (
 	"github.com/offchainlabs/nitro/arbutil"
 	"github.com/offchainlabs/nitro/cmd/chaininfo"
 	"github.com/offchainlabs/nitro/daprovider"
+	"github.com/offchainlabs/nitro/daprovider/celestia/tree"
+	celestiaTypes "github.com/offchainlabs/nitro/daprovider/celestia/types"
 	"github.com/offchainlabs/nitro/daprovider/das/dastree"
 	"github.com/offchainlabs/nitro/daprovider/das/dasutil"
-	"github.com/offchainlabs/nitro/das/celestia/tree"
-	celestiaTypes "github.com/offchainlabs/nitro/das/celestia/types"
 	"github.com/offchainlabs/nitro/gethhook"
 	"github.com/offchainlabs/nitro/wavmio"
 )
@@ -347,20 +347,13 @@ func main() {
 		if lastBlockHeader != nil {
 			delayedMessagesRead = lastBlockHeader.Nonce.Uint64()
 		}
-		var dasReader dasutil.DASReader
-		var dasKeysetFetcher dasutil.DASKeysetFetcher
-		if dasEnabled {
-			// DAS batch and keysets are all together in the same preimage binary.
-			dasReader = &PreimageDASReader{}
-			dasKeysetFetcher = &PreimageDASReader{}
-		}
 		backend := WavmInbox{}
 		var keysetValidationMode = daprovider.KeysetPanicIfInvalid
 		if backend.GetPositionWithinMessage() > 0 {
 			keysetValidationMode = daprovider.KeysetDontValidate
 		}
 		var dapReaders []daprovider.Reader
-		dapReaders = append(dapReaders, daprovider.NewReaderForDAS(&PreimageDASReader{}, &PreimageDASReader{}))
+		dapReaders = append(dapReaders, dasutil.NewReaderForDAS(&PreimageDASReader{}, &PreimageDASReader{}))
 		dapReaders = append(dapReaders, celestiaTypes.NewReaderForCelestia(&PreimageCelestiaReader{}))
 		dapReaders = append(dapReaders, daprovider.NewReaderForBlobReader(&BlobPreimageReader{}))
 		inboxMultiplexer := arbstate.NewInboxMultiplexer(backend, delayedMessagesRead, dapReaders, keysetValidationMode)
