@@ -84,7 +84,7 @@ COPY ./cmd/replay ./cmd/replay
 COPY ./daprovider ./daprovider
 COPY ./daprovider/das/dasutil ./daprovider/das/dasutil
 COPY ./daprovider/das/dastree ./daprovider/das/dastree
-COPY ./das/celestia ./das/celestia
+COPY ./daprovider/celestia ./daprovider/celestia
 COPY ./precompiles ./precompiles
 COPY ./statetransfer ./statetransfer
 COPY ./util ./util
