@@ -237,6 +237,7 @@ RUN ./download-machine.sh consensus-v32 0x184884e1eb9fefdc158f6c8ac912bb183bf3cf
 RUN ./download-machine.sh consensus-v40 0xdb698a2576298f25448bc092e52cf13b1e24141c997135d70f217d674bbeb69a
 RUN ./download-machine.sh v3.2.1-rc.1 0xe81f986823a85105c5fd91bb53b4493d38c0c26652d23f76a7405ac889908287 celestiaorg
 RUN ./download-machine.sh v3.3.2 0xaf1dbdfceb871c00bfbb1675983133df04f0ed04e89647812513c091e3a982b3 celestiaorg
+RUN ./download-machine.sh consensus-v40-rc1 0x2249901020153123a4b81b2e0bc376bdf12bb463d291297791502c6577df17fd celestiaorg
 
 FROM golang:1.23.1-bookworm AS node-builder
 WORKDIR /workspace
