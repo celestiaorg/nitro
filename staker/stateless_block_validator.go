@@ -299,6 +299,10 @@ func (v *StatelessBlockValidator) ExecutionSpawners() []validator.ExecutionSpawn
 	return v.execSpawners
 }
 
+func (v *StatelessBlockValidator) InboxReader() InboxReaderInterface {
+	return v.inboxReader
+}
+
 func (v *StatelessBlockValidator) BOLDExecutionSpawners() []validator.BOLDExecutionSpawner {
 	return v.boldExecSpawners
 }
