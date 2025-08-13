@@ -57,26 +57,27 @@ import (
 )
 
 type Config struct {
-	Sequencer            bool                           `koanf:"sequencer"`
-	ParentChainReader    headerreader.Config            `koanf:"parent-chain-reader" reload:"hot"`
-	InboxReader          InboxReaderConfig              `koanf:"inbox-reader" reload:"hot"`
-	DelayedSequencer     DelayedSequencerConfig         `koanf:"delayed-sequencer" reload:"hot"`
-	BatchPoster          BatchPosterConfig              `koanf:"batch-poster" reload:"hot"`
-	MessagePruner        MessagePrunerConfig            `koanf:"message-pruner" reload:"hot"`
-	BlockValidator       staker.BlockValidatorConfig    `koanf:"block-validator" reload:"hot"`
-	Feed                 broadcastclient.FeedConfig     `koanf:"feed" reload:"hot"`
-	Staker               legacystaker.L1ValidatorConfig `koanf:"staker" reload:"hot"`
-	Bold                 boldstaker.BoldConfig          `koanf:"bold"`
-	SeqCoordinator       SeqCoordinatorConfig           `koanf:"seq-coordinator"`
-	DataAvailability     das.DataAvailabilityConfig     `koanf:"data-availability"`
-	SyncMonitor          SyncMonitorConfig              `koanf:"sync-monitor"`
-	Dangerous            DangerousConfig                `koanf:"dangerous"`
-	TransactionStreamer  TransactionStreamerConfig      `koanf:"transaction-streamer" reload:"hot"`
-	Maintenance          MaintenanceConfig              `koanf:"maintenance" reload:"hot"`
-	ResourceMgmt         resourcemanager.Config         `koanf:"resource-mgmt" reload:"hot"`
-	BlockMetadataFetcher BlockMetadataFetcherConfig     `koanf:"block-metadata-fetcher" reload:"hot"`
-	Celestia             celestia.CelestiaConfig        `koanf:"celestia-cfg"`
-	DAPreference         []string                       `koanf:"da-preference"`
+	Sequencer                bool                           `koanf:"sequencer"`
+	ParentChainReader        headerreader.Config            `koanf:"parent-chain-reader" reload:"hot"`
+	InboxReader              InboxReaderConfig              `koanf:"inbox-reader" reload:"hot"`
+	DelayedSequencer         DelayedSequencerConfig         `koanf:"delayed-sequencer" reload:"hot"`
+	BatchPoster              BatchPosterConfig              `koanf:"batch-poster" reload:"hot"`
+	MessagePruner            MessagePrunerConfig            `koanf:"message-pruner" reload:"hot"`
+	BlockValidator           staker.BlockValidatorConfig    `koanf:"block-validator" reload:"hot"`
+	Feed                     broadcastclient.FeedConfig     `koanf:"feed" reload:"hot"`
+	Staker                   legacystaker.L1ValidatorConfig `koanf:"staker" reload:"hot"`
+	Bold                     boldstaker.BoldConfig          `koanf:"bold"`
+	SeqCoordinator           SeqCoordinatorConfig           `koanf:"seq-coordinator"`
+	DataAvailability         das.DataAvailabilityConfig     `koanf:"data-availability"`
+	SyncMonitor              SyncMonitorConfig              `koanf:"sync-monitor"`
+	Dangerous                DangerousConfig                `koanf:"dangerous"`
+	TransactionStreamer      TransactionStreamerConfig      `koanf:"transaction-streamer" reload:"hot"`
+	Maintenance              MaintenanceConfig              `koanf:"maintenance" reload:"hot"`
+	ResourceMgmt             resourcemanager.Config         `koanf:"resource-mgmt" reload:"hot"`
+	BlockMetadataFetcher     BlockMetadataFetcherConfig     `koanf:"block-metadata-fetcher" reload:"hot"`
+	ConsensusExecutionSyncer ConsensusExecutionSyncerConfig `koanf:"consensus-execution-syncer"`
+	Celestia                 celestia.CelestiaConfig        `koanf:"celestia-cfg"`
+	DAPreference             []string                       `koanf:"da-preference"`
 	// SnapSyncConfig is only used for testing purposes, these should not be configured in production.
 	SnapSyncTest SnapSyncConfig
 }
@@ -548,7 +549,7 @@ func getDelayedBridgeAndSequencerInbox(
 	return delayedBridge, sequencerInbox, nil
 }
 
-func getDAS(
+func getDapWriters(
 	ctx context.Context,
 	config *Config,
 	l2Config *params.ChainConfig,
@@ -558,7 +559,7 @@ func getDAS(
 	deployInfo *chaininfo.RollupAddresses,
 	dataSigner signature.DataSignerFunc,
 	l1client *ethclient.Client,
-) (das.DataAvailabilityServiceWriter, *das.LifecycleManager, []daprovider.Reader, error) {
+) ([]daprovider.Writer, *das.LifecycleManager, []daprovider.Reader, error) {
 	var daWriter das.DataAvailabilityServiceWriter
 	var daReader das.DataAvailabilityServiceReader
 	var dasLifecycleManager *das.LifecycleManager
@@ -594,17 +595,7 @@ func getDAS(
 	if config.Celestia.Enable {
 		celestiaService, err := celestia.NewCelestiaDASRPCClient(config.Celestia.URL)
 		if err != nil {
-			return nil, err
-		}
-
-		celestiaReader = celestiaService
-		celestiaWriter = celestiaService
-	}
-
-	if config.Celestia.Enable {
-		celestiaService, err := celestia.NewCelestiaDASRPCClient(config.Celestia.URL)
-		if err != nil {
-			return nil, err
+			return nil, nil, nil, err
 		}
 
 		celestiaReader = celestiaService
@@ -625,6 +616,49 @@ func getDAS(
 	if celestiaReader != nil {
 		dapReaders = append(dapReaders, celestiaTypes.NewReaderForCelestia(celestiaReader))
 	}
+
+	dapWriters := []daprovider.Writer{}
+	for _, providerName := range config.DAPreference {
+		nilWriter := false
+		switch strings.ToLower(providerName) {
+		case "anytrust":
+			log.Info("Adding DapWriter", "type", "anytrust")
+			if daWriter != nil {
+				dapWriters = append(dapWriters, daprovider.NewWriterForDAS(daWriter))
+			} else {
+				nilWriter = true
+			}
+		case "celestia":
+			log.Info("Adding DapWriter", "type", "celestia")
+			if celestiaWriter != nil {
+				dapWriters = append(dapWriters, celestiaTypes.NewWriterForCelestia(celestiaWriter))
+			} else {
+				nilWriter = true
+			}
+		}
+
+		if nilWriter {
+			log.Error("encountered nil daWriter", "daWriter", providerName)
+		}
+	}
+
+	return dapWriters, dasLifecycleManager, dapReaders, nil
+}
+
+func getInboxTrackerAndReader(
+	ctx context.Context,
+	arbDb ethdb.Database,
+	txStreamer *TransactionStreamer,
+	dapReaders []daprovider.Reader,
+	config *Config,
+	configFetcher ConfigFetcher,
+	l1client *ethclient.Client,
+	l1Reader *headerreader.HeaderReader,
+	deployInfo *chaininfo.RollupAddresses,
+	delayedBridge *DelayedBridge,
+	sequencerInbox *SequencerInbox,
+	exec execution.ExecutionSequencer,
+) (*InboxTracker, *InboxReader, error) {
 	inboxTracker, err := NewInboxTracker(arbDb, txStreamer, dapReaders, config.SnapSyncTest)
 	if err != nil {
 		return nil, nil, err
@@ -867,7 +901,7 @@ func getBatchPoster(
 	config *Config,
 	configFetcher ConfigFetcher,
 	txOptsBatchPoster *bind.TransactOpts,
-	daWriter das.DataAvailabilityServiceWriter,
+	dapWriters []daprovider.Writer,
 	l1Reader *headerreader.HeaderReader,
 	inboxTracker *InboxTracker,
 	txStreamer *TransactionStreamer,
@@ -887,30 +921,6 @@ func getBatchPoster(
 
 		if txOptsBatchPoster == nil && config.BatchPoster.DataPoster.ExternalSigner.URL == "" {
 			return nil, errors.New("batchposter, but no TxOpts")
-		}
-		dapWriters := []daprovider.Writer{}
-		for _, providerName := range config.DAPreference {
-			nilWriter := false
-			switch strings.ToLower(providerName) {
-			case "anytrust":
-				log.Info("Adding DapWriter", "type", "anytrust")
-				if daWriter != nil {
-					dapWriters = append(dapWriters, daprovider.NewWriterForDAS(daWriter))
-				} else {
-					nilWriter = true
-				}
-			case "celestia":
-				log.Info("Adding DapWriter", "type", "celestia")
-				if celestiaWriter != nil {
-					dapWriters = append(dapWriters, celestiaTypes.NewWriterForCelestia(celestiaWriter))
-				} else {
-					nilWriter = true
-				}
-			}
-
-			if nilWriter {
-				log.Error("encountered nil daWriter", "daWriter", providerName)
-			}
 		}
 		var err error
 		batchPoster, err = NewBatchPoster(ctx, &BatchPosterOpts{
@@ -1084,7 +1094,7 @@ func createNodeImpl(
 		return nil, err
 	}
 
-	daWriter, dasLifecycleManager, dapReaders, err := getDAS(ctx, config, l2Config, txStreamer, blobReader, l1Reader, deployInfo, dataSigner, l1client)
+	dapWriters, dasLifecycleManager, dapReaders, err := getDapWriters(ctx, config, l2Config, txStreamer, blobReader, l1Reader, deployInfo, dataSigner, l1client)
 	if err != nil {
 		return nil, err
 	}
@@ -1109,7 +1119,7 @@ func createNodeImpl(
 		return nil, err
 	}
 
-	batchPoster, err := getBatchPoster(ctx, config, configFetcher, txOptsBatchPoster, daWriter, l1Reader, inboxTracker, txStreamer, executionBatchPoster, arbDb, syncMonitor, deployInfo, parentChainID, dapReaders, stakerAddr)
+	batchPoster, err := getBatchPoster(ctx, config, configFetcher, txOptsBatchPoster, dapWriters, l1Reader, inboxTracker, txStreamer, executionBatchPoster, arbDb, syncMonitor, deployInfo, parentChainID, dapReaders, stakerAddr)
 	if err != nil {
 		return nil, err
 	}
