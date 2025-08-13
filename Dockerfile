@@ -49,8 +49,6 @@ FROM wasm-base AS wasm-libs-builder
 # clang / lld used by soft-float wasm
 RUN apt-get update && \
     apt-get install -y clang=1:14.0-55.7~deb12u1 lld=1:14.0-55.7~deb12u1 wabt
-# pinned rust 1.80.1
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.80.1 --target x86_64-unknown-linux-gnu,wasm32-unknown-unknown,wasm32-wasi
 # pinned rust 1.84.1
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.84.1 --target x86_64-unknown-linux-gnu,wasm32-unknown-unknown,wasm32-wasip1
 COPY ./Makefile ./
@@ -244,9 +242,12 @@ RUN ./download-machine.sh consensus-v32 0x184884e1eb9fefdc158f6c8ac912bb183bf3cf
 #RUN ./download-machine.sh consensus-v40-rc.2 0xa8206be13d53e456c7ab061d94bab5b229d674ac57ffe7281216479a8820fcc0
 RUN ./download-machine.sh consensus-v40 0xdb698a2576298f25448bc092e52cf13b1e24141c997135d70f217d674bbeb69a
 RUN ./download-machine.sh v3.2.1-rc.1 0xe81f986823a85105c5fd91bb53b4493d38c0c26652d23f76a7405ac889908287 celestiaorg
+RUN ./download-machine.sh v3.3.2 0xaf1dbdfceb871c00bfbb1675983133df04f0ed04e89647812513c091e3a982b3 celestiaorg
 
+FROM golang:1.23.1-bookworm AS node-builder
 WORKDIR /workspace
 ARG version=""
+ARG datetime=""
 ARG modified=""
 ENV NITRO_VERSION=$version
 ENV NITRO_DATETIME=$datetime

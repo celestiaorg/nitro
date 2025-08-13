@@ -72,7 +72,6 @@ type Config struct {
 	Bold                     boldstaker.BoldConfig          `koanf:"bold"`
 	SeqCoordinator           SeqCoordinatorConfig           `koanf:"seq-coordinator"`
 	DataAvailability         das.DataAvailabilityConfig     `koanf:"data-availability"`
-	DAProvider               daclient.ClientConfig          `koanf:"da-provider" reload:"hot"`
 	SyncMonitor              SyncMonitorConfig              `koanf:"sync-monitor"`
 	Dangerous                DangerousConfig                `koanf:"dangerous"`
 	TransactionStreamer      TransactionStreamerConfig      `koanf:"transaction-streamer" reload:"hot"`
@@ -557,7 +556,7 @@ func getDelayedBridgeAndSequencerInbox(
 	return delayedBridge, sequencerInbox, nil
 }
 
-func getDAS(
+func getDapWriters(
 	ctx context.Context,
 	config *Config,
 	l2Config *params.ChainConfig,
@@ -567,20 +566,25 @@ func getDAS(
 	deployInfo *chaininfo.RollupAddresses,
 	dataSigner signature.DataSignerFunc,
 	l1client *ethclient.Client,
-	stack *node.Node,
-) (daprovider.Writer, func(), []daprovider.Reader, error) {
-	if config.DAProvider.Enable && config.DataAvailability.Enable {
-		return nil, nil, nil, errors.New("da-provider and data-availability cannot be enabled together")
-	}
-
-	var err error
-	var daClient *daclient.Client
-	var withDAWriter bool
-	var dasServerCloseFn func()
-	if config.DAProvider.Enable {
-		daClient, err = daclient.NewClient(ctx, func() *rpcclient.ClientConfig { return &config.DAProvider.RPC })
-		if err != nil {
-			return nil, nil, nil, err
+) ([]daprovider.Writer, *das.LifecycleManager, []daprovider.Reader, error) {
+	var daWriter das.DataAvailabilityServiceWriter
+	var daReader das.DataAvailabilityServiceReader
+	var dasLifecycleManager *das.LifecycleManager
+	var dasKeysetFetcher *das.KeysetFetcher
+	var celestiaReader celestiaTypes.CelestiaReader
+	var celestiaWriter celestiaTypes.CelestiaWriter
+	if config.DataAvailability.Enable {
+		var err error
+		if config.BatchPoster.Enable {
+			daWriter, daReader, dasKeysetFetcher, dasLifecycleManager, err = das.CreateBatchPosterDAS(ctx, &config.DataAvailability, dataSigner, l1client, deployInfo.SequencerInbox)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+		} else {
+			daReader, dasKeysetFetcher, dasLifecycleManager, err = das.CreateDAReaderForNode(ctx, &config.DataAvailability, l1Reader, &deployInfo.SequencerInbox)
+			if err != nil {
+				return nil, nil, nil, err
+			}
 		}
 		// Only allow dawriter if batchposter is enabled
 		withDAWriter = config.DAProvider.WithWriter && config.BatchPoster.Enable
@@ -627,17 +631,7 @@ func getDAS(
 	if config.Celestia.Enable {
 		celestiaService, err := celestia.NewCelestiaDASRPCClient(config.Celestia.URL)
 		if err != nil {
-			return nil, err
-		}
-
-		celestiaReader = celestiaService
-		celestiaWriter = celestiaService
-	}
-
-	if config.Celestia.Enable {
-		celestiaService, err := celestia.NewCelestiaDASRPCClient(config.Celestia.URL)
-		if err != nil {
-			return nil, err
+			return nil, nil, nil, err
 		}
 
 		celestiaReader = celestiaService
@@ -658,7 +652,33 @@ func getDAS(
 	if withDAWriter {
 		return daClient, dasServerCloseFn, dapReaders, nil
 	}
-	return nil, dasServerCloseFn, dapReaders, nil
+
+	dapWriters := []daprovider.Writer{}
+	for _, providerName := range config.DAPreference {
+		nilWriter := false
+		switch strings.ToLower(providerName) {
+		case "anytrust":
+			log.Info("Adding DapWriter", "type", "anytrust")
+			if daWriter != nil {
+				dapWriters = append(dapWriters, daprovider.NewWriterForDAS(daWriter))
+			} else {
+				nilWriter = true
+			}
+		case "celestia":
+			log.Info("Adding DapWriter", "type", "celestia")
+			if celestiaWriter != nil {
+				dapWriters = append(dapWriters, celestiaTypes.NewWriterForCelestia(celestiaWriter))
+			} else {
+				nilWriter = true
+			}
+		}
+
+		if nilWriter {
+			log.Error("encountered nil daWriter", "daWriter", providerName)
+		}
+	}
+
+	return dapWriters, dasLifecycleManager, dapReaders, nil
 }
 
 func getInboxTrackerAndReader(
@@ -918,7 +938,7 @@ func getBatchPoster(
 	config *Config,
 	configFetcher ConfigFetcher,
 	txOptsBatchPoster *bind.TransactOpts,
-	dapWriter daprovider.Writer,
+	dapWriters []daprovider.Writer,
 	l1Reader *headerreader.HeaderReader,
 	inboxTracker *InboxTracker,
 	txStreamer *TransactionStreamer,
@@ -938,9 +958,6 @@ func getBatchPoster(
 
 		if txOptsBatchPoster == nil && config.BatchPoster.DataPoster.ExternalSigner.URL == "" {
 			return nil, errors.New("batchposter, but no TxOpts")
-		}
-		if dapWriter != nil && !config.BatchPoster.CheckBatchCorrectness {
-			return nil, errors.New("when da-provider is used by batch-poster for posting, check-batch-correctness needs to be enabled")
 		}
 		var err error
 		batchPoster, err = NewBatchPoster(ctx, &BatchPosterOpts{
@@ -1113,7 +1130,7 @@ func createNodeImpl(
 		return nil, err
 	}
 
-	dapWriter, dasServerCloseFn, dapReaders, err := getDAS(ctx, config, l2Config, txStreamer, blobReader, l1Reader, deployInfo, dataSigner, l1client, stack)
+	dapWriters, dasLifecycleManager, dapReaders, err := getDapWriters(ctx, config, l2Config, txStreamer, blobReader, l1Reader, deployInfo, dataSigner, l1client)
 	if err != nil {
 		return nil, err
 	}
@@ -1138,7 +1155,7 @@ func createNodeImpl(
 		return nil, err
 	}
 
-	batchPoster, err := getBatchPoster(ctx, config, configFetcher, txOptsBatchPoster, dapWriter, l1Reader, inboxTracker, txStreamer, executionBatchPoster, arbDb, syncMonitor, deployInfo, parentChainID, dapReaders, stakerAddr)
+	batchPoster, err := getBatchPoster(ctx, config, configFetcher, txOptsBatchPoster, dapWriters, l1Reader, inboxTracker, txStreamer, executionBatchPoster, arbDb, syncMonitor, deployInfo, parentChainID, dapReaders, stakerAddr)
 	if err != nil {
 		return nil, err
 	}
