@@ -7,6 +7,7 @@ on:
   pull_request:
   push:
     branches:
+      - celestia-develop
       - master
   schedule:
     # Run at 00:00 AM UTC
