@@ -30,7 +30,7 @@ jobs:
       matrix:
         test-mode: [race, legacychallenge, long, challenge, l3challenge]
 
-    if: github.event_name == 'schedule' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/celestia-develop')
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.ref == 'refs/heads/master')
     
     steps:
       - name: Checkout
