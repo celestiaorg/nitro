@@ -72,6 +72,10 @@ const ZeroheavyMessageHeaderFlag byte = 0x20
 // BlobHashesHeaderFlag indicates that this message contains EIP 4844 versioned hashes of the commitments calculated over the blob data for the batch data.
 const BlobHashesHeaderFlag byte = L1AuthenticatedMessageHeaderFlag | 0x10 // 0x50
 
+// CelestiaMessageHeaderFlag indicates that this data is a Blob Pointer
+// which will be used to retrieve data from Celestia
+const CelestiaMessageHeaderFlag byte = 0x63
+
 // BrotliMessageHeaderByte indicates that the message is brotli-compressed.
 const BrotliMessageHeaderByte byte = 0
 
@@ -103,6 +107,10 @@ func IsZeroheavyEncodedHeaderByte(header byte) bool {
 
 func IsBlobHashesHeaderByte(header byte) bool {
 	return hasBits(header, BlobHashesHeaderFlag)
+}
+
+func IsCelestiaMessageHeaderByte(header byte) bool {
+	return hasBits(header, CelestiaMessageHeaderFlag)
 }
 
 func IsBrotliMessageHeaderByte(b uint8) bool {

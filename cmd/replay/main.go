@@ -13,7 +13,6 @@ import (
 	"io"
 	"os"
 
-	"github.com/celestiaorg/nitro-das-celestia/daserver/types/tree"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
@@ -35,6 +34,8 @@ import (
 	"github.com/offchainlabs/nitro/arbutil"
 	"github.com/offchainlabs/nitro/cmd/chaininfo"
 	"github.com/offchainlabs/nitro/daprovider"
+	"github.com/offchainlabs/nitro/daprovider/celestia/tree"
+	celestiaTypes "github.com/offchainlabs/nitro/daprovider/celestia/types"
 	"github.com/offchainlabs/nitro/daprovider/das/dastree"
 	"github.com/offchainlabs/nitro/daprovider/das/dasutil"
 	"github.com/offchainlabs/nitro/gethhook"
@@ -352,7 +353,7 @@ func main() {
 			keysetValidationMode = daprovider.KeysetDontValidate
 		}
 		var dapReaders []daprovider.Reader
-		dapReaders = append(dapReaders, daprovider.NewReaderForDAS(&PreimageDASReader{}, &PreimageDASReader{}))
+		dapReaders = append(dapReaders, dasutil.NewReaderForDAS(&PreimageDASReader{}, &PreimageDASReader{}))
 		dapReaders = append(dapReaders, celestiaTypes.NewReaderForCelestia(&PreimageCelestiaReader{}))
 		dapReaders = append(dapReaders, daprovider.NewReaderForBlobReader(&BlobPreimageReader{}))
 		inboxMultiplexer := arbstate.NewInboxMultiplexer(backend, delayedMessagesRead, dapReaders, keysetValidationMode)

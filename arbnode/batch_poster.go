@@ -107,7 +107,7 @@ type BatchPoster struct {
 	gasRefunderAddr    common.Address
 	building           *buildingBatch
 	dapReaders         []daprovider.Reader
-	dapWriters         []daprovider.Writer
+	dapWriter          daprovider.Writer
 	dataPoster         *dataposter.DataPoster
 	redisLock          *redislock.Simple
 	messagesPerBatch   *arbmath.MovingAverage[uint64]
@@ -327,7 +327,7 @@ type BatchPosterOpts struct {
 	Config        BatchPosterConfigFetcher
 	DeployInfo    *chaininfo.RollupAddresses
 	TransactOpts  *bind.TransactOpts
-	DAPWriters    []daprovider.Writer
+	DAPWriter     daprovider.Writer
 	ParentChainID *big.Int
 	DAPReaders    []daprovider.Reader
 }
@@ -383,7 +383,7 @@ func NewBatchPoster(ctx context.Context, opts *BatchPosterOpts) (*BatchPoster, e
 		seqInboxAddr:       opts.DeployInfo.SequencerInbox,
 		gasRefunderAddr:    opts.Config().gasRefunder,
 		bridgeAddr:         opts.DeployInfo.Bridge,
-		dapWriters:         opts.DAPWriters,
+		dapWriter:          opts.DAPWriter,
 		redisLock:          redisLock,
 		dapReaders:         opts.DAPReaders,
 		parentChain:        &parent.ParentChain{ChainID: opts.ParentChainID, L1Reader: opts.L1Reader},
@@ -1365,7 +1365,7 @@ func (b *BatchPoster) MaybePostSequencerBatch(ctx context.Context) (bool, error)
 		}
 		var use4844 bool
 		config := b.config()
-		if config.Post4844Blobs && len(b.dapWriters) == 0 && latestHeader.ExcessBlobGas != nil && latestHeader.BlobGasUsed != nil {
+		if config.Post4844Blobs && b.dapWriter == nil && latestHeader.ExcessBlobGas != nil && latestHeader.BlobGasUsed != nil {
 			arbOSVersion, err := b.arbOSVersionGetter.ArbOSVersionForMessageIndex(arbutil.MessageIndex(arbmath.SaturatingUSub(uint64(batchPosition.MessageCount), 1)))
 			if err != nil {
 				return false, err
@@ -1656,7 +1656,7 @@ func (b *BatchPoster) MaybePostSequencerBatch(ctx context.Context) (bool, error)
 		return false, nil
 	}
 
-	if len(b.dapWriters) > 0 {
+	if b.dapWriter != nil {
 		if !b.redisLock.AttemptLock(ctx) {
 			return false, errAttemptLockFailed
 		}
@@ -1671,22 +1671,15 @@ func (b *BatchPoster) MaybePostSequencerBatch(ctx context.Context) (bool, error)
 			return false, fmt.Errorf("%w: nonce changed from %d to %d while creating batch", storage.ErrStorageRace, nonce, gotNonce)
 		}
 
-		// attempt to store data using one of the dapWriters, if it fails and fallbacks are disabled, return a hard error
-		seqMsg := sequencerMsg
-		for _, writer := range b.dapWriters {
-			log.Info("Attempting to store data with dapWriter", "type", writer.Type())
-			sequencerMsg, err = writer.Store(ctx, seqMsg, uint64(time.Now().Add(config.DASRetentionPeriod).Unix()), config.DisableDapFallbackStoreDataOnChain)
-			if err != nil {
-				if config.DisableDapFallbackStoreDataOnChain {
-					log.Error("Error while attempting to post batch and on chain fallback is disabled", "error", err)
-					return false, err
-				}
-				log.Error("Error when trying to store data with dapWriter", "type", writer.Type())
-				continue
-			}
-			// if we succesffuly posted a batch with a dapWriter, we move on and ignore the rest
-			break
+		// #nosec G115
+		sequencerMsg, err = b.dapWriter.Store(ctx, sequencerMsg, uint64(time.Now().Add(config.DASRetentionPeriod).Unix()), config.DisableDapFallbackStoreDataOnChain)
+		if err != nil {
+			batchPosterDAFailureCounter.Inc(1)
+			return false, err
 		}
+
+		batchPosterDASuccessCounter.Inc(1)
+		batchPosterDALastSuccessfulActionGauge.Update(time.Now().Unix())
 
 	}
 

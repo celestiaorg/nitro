@@ -295,6 +295,10 @@ func (v *StatelessBlockValidator) readPostedBatch(ctx context.Context, batchNum 
 	return postedData, err
 }
 
+func (v *StatelessBlockValidator) InboxReader() InboxReaderInterface {
+	return v.inboxReader
+}
+
 func (v *StatelessBlockValidator) ExecutionSpawners() []validator.ExecutionSpawner {
 	return v.execSpawners
 }

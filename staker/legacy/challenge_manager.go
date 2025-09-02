@@ -22,7 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/offchainlabs/nitro/arbutil"
-	celestiaTypes "github.com/offchainlabs/nitro/das/celestia/types"
+	celestiaTypes "github.com/offchainlabs/nitro/daprovider/celestia/types"
 	"github.com/offchainlabs/nitro/solgen/go/challenge_legacy_gen"
 	"github.com/offchainlabs/nitro/staker"
 	"github.com/offchainlabs/nitro/validator"
