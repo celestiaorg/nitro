@@ -7,11 +7,11 @@ on:
   pull_request:
   push:
     branches:
-      - celestia-develop
+      - celestia-main
       - master
   schedule:
     # Run at 00:00 AM UTC
-    - cron: '0 0 * * *'
+    - cron: "0 0 * * *"
 
 jobs:
   # Only run on schedule AND main branch
@@ -29,22 +29,22 @@ jobs:
       fail-fast: false
       matrix:
         test-mode: [race, legacychallenge, long, challenge, l3challenge]
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: true
-          
+
       - name: Install dependencies
         run: sudo apt update && sudo apt install -y wabt gotestsum
 
       - name: Setup nodejs
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'yarn'
-          cache-dependency-path: '**/yarn.lock'
+          node-version: "18"
+          cache: "yarn"
+          cache-dependency-path: "**/yarn.lock"
 
       - name: Install go
         uses: actions/setup-go@v5
@@ -60,17 +60,17 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         id: install-rust
         with:
-          toolchain: '1.84.1'
-          targets: 'wasm32-wasip1, wasm32-unknown-unknown'
-          components: 'llvm-tools-preview, rustfmt, clippy'
+          toolchain: "1.84.1"
+          targets: "wasm32-wasip1, wasm32-unknown-unknown"
+          components: "llvm-tools-preview, rustfmt, clippy"
 
       - name: Install rust nightly
         uses: dtolnay/rust-toolchain@nightly
         id: install-rust-nightly
         with:
-          toolchain: 'nightly-2025-02-14'
-          targets: 'wasm32-wasip1, wasm32-unknown-unknown'
-          components: 'rust-src, rustfmt, clippy'
+          toolchain: "nightly-2025-02-14"
+          targets: "wasm32-wasip1, wasm32-unknown-unknown"
+          components: "rust-src, rustfmt, clippy"
 
       - name: Set STYLUS_NIGHTLY_VER environment variable
         run: echo "STYLUS_NIGHTLY_VER=+$(rustup toolchain list | grep '^nightly' | head -n1 | cut -d' ' -f1)" >> "$GITHUB_ENV"
@@ -83,7 +83,7 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
         with:
           cache: false
-        
+
       - name: Install cbindgen
         run: cargo install --force cbindgen
 
@@ -138,7 +138,7 @@ jobs:
           version: latest
           skip-cache: true
           skip-save-cache: true
-          
+
       - name: Custom Lint
         run: |
           go run ./linters ./...
@@ -187,28 +187,27 @@ jobs:
           verbose: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
-
   # Only run this job if files in bold/legacy/ are modified
   tests-pr:
     name: PR modified files tests
     runs-on: ubuntu-8
     if: github.event_name == 'pull_request'
-    
+
     permissions:
       pull-requests: read
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: true
-          
+
       - name: Check changed files
         id: changed-files
         uses: tj-actions/changed-files@v46
         with:
           files: bold/legacy/**
-          
+
       # Add conditional execution for all subsequent steps
       - name: Skip tests if no relevant files changed
         id: check-skip
@@ -216,7 +215,7 @@ jobs:
         run: |
           echo "No changes detected in bold/legacy/** - skipping challenge tests"
           exit 0  # Success exit code to pass the job
-      
+
       - name: Install dependencies
         if: steps.changed-files.outputs.any_changed == 'true'
         run: sudo apt update && sudo apt install -y wabt gotestsum
@@ -225,9 +224,9 @@ jobs:
         if: steps.changed-files.outputs.any_changed == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'yarn'
-          cache-dependency-path: '**/yarn.lock'
+          node-version: "18"
+          cache: "yarn"
+          cache-dependency-path: "**/yarn.lock"
 
       - name: Install go
         if: steps.changed-files.outputs.any_changed == 'true'
@@ -246,18 +245,18 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         id: install-rust
         with:
-          toolchain: '1.84.1'
-          targets: 'wasm32-wasip1, wasm32-unknown-unknown'
-          components: 'llvm-tools-preview, rustfmt, clippy'
+          toolchain: "1.84.1"
+          targets: "wasm32-wasip1, wasm32-unknown-unknown"
+          components: "llvm-tools-preview, rustfmt, clippy"
 
       - name: Install rust nightly
         if: steps.changed-files.outputs.any_changed == 'true'
         uses: dtolnay/rust-toolchain@nightly
         id: install-rust-nightly
         with:
-          toolchain: 'nightly-2025-02-14'
-          targets: 'wasm32-wasip1, wasm32-unknown-unknown'
-          components: 'rust-src, rustfmt, clippy'
+          toolchain: "nightly-2025-02-14"
+          targets: "wasm32-wasip1, wasm32-unknown-unknown"
+          components: "rust-src, rustfmt, clippy"
 
       - name: Set STYLUS_NIGHTLY_VER environment variable
         if: steps.changed-files.outputs.any_changed == 'true'
@@ -272,7 +271,7 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
         with:
           cache: false
-        
+
       - name: Install cbindgen
         if: steps.changed-files.outputs.any_changed == 'true'
         run: cargo install --force cbindgen
@@ -338,7 +337,7 @@ jobs:
           version: latest
           skip-cache: true
           skip-save-cache: true
-          
+
       - name: Custom Lint
         if: steps.changed-files.outputs.any_changed == 'true'
         run: |
