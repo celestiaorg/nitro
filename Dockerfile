@@ -46,10 +46,10 @@ WORKDIR /workspace
 RUN apt-get update && apt-get install -y curl build-essential=12.9
 
 FROM wasm-base AS wasm-libs-builder
-	# clang / lld used by soft-float wasm
+# clang / lld used by soft-float wasm
 RUN apt-get update && \
     apt-get install -y clang=1:14.0-55.7~deb12u1 lld=1:14.0-55.7~deb12u1 wabt
-    # pinned rust 1.84.1
+# pinned rust 1.84.1
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.84.1 --target x86_64-unknown-linux-gnu,wasm32-unknown-unknown,wasm32-wasip1
 COPY ./Makefile ./
 COPY arbitrator/Cargo.* arbitrator/
@@ -85,6 +85,7 @@ COPY ./cmd/replay ./cmd/replay
 COPY ./daprovider ./daprovider
 COPY ./daprovider/das/dasutil ./daprovider/das/dasutil
 COPY ./daprovider/das/dastree ./daprovider/das/dastree
+COPY ./daprovider/celestia ./daprovider/celestia
 COPY ./precompiles ./precompiles
 COPY ./statetransfer ./statetransfer
 COPY ./util ./util
@@ -103,6 +104,7 @@ COPY ./go-ethereum ./go-ethereum
 COPY scripts/remove_reference_types.sh scripts/
 COPY --from=brotli-wasm-export / target/
 COPY --from=contracts-builder workspace/contracts-local/out/precompiles/ contracts-local/out/precompiles/
+COPY --from=contracts-builder workspace/contracts/build/contracts/src/celestia/ contracts/build/contracts/src/celestia/
 COPY --from=contracts-builder workspace/contracts/node_modules/@offchainlabs/upgrade-executor/build/contracts/src/UpgradeExecutor.sol/UpgradeExecutor.json contracts/
 COPY --from=contracts-builder workspace/contracts-legacy/build/contracts/src/precompiles/ contracts-legacy/build/contracts/src/precompiles/
 COPY --from=contracts-builder workspace/.make/ .make/
@@ -240,6 +242,9 @@ RUN ./download-machine.sh consensus-v32 0x184884e1eb9fefdc158f6c8ac912bb183bf3cf
 RUN ./download-machine.sh consensus-v42-rc.1 0x1be44d9f74056fc12af97ccbef7a2668bc5c946fe210505957b0a08b954b907f
 RUN ./download-machine.sh consensus-v50-alpha.1 0x28cfd8d81613ce4ebe750e77bfd95d6d95d4f53240488095a11c1ad3a494fa82
 RUN ./download-machine.sh consensus-v40 0xdb698a2576298f25448bc092e52cf13b1e24141c997135d70f217d674bbeb69a
+RUN ./download-machine.sh v3.2.1-rc.1 0xe81f986823a85105c5fd91bb53b4493d38c0c26652d23f76a7405ac889908287 celestiaorg
+RUN ./download-machine.sh v3.3.2 0xaf1dbdfceb871c00bfbb1675983133df04f0ed04e89647812513c091e3a982b3 celestiaorg
+RUN ./download-machine.sh consensus-v40-rc1 0x2249901020153123a4b81b2e0bc376bdf12bb463d291297791502c6577df17fd celestiaorg
 
 FROM golang:1.24.5-bookworm AS node-builder
 WORKDIR /workspace
