@@ -618,7 +618,7 @@ func (m *ChallengeManager) getDAProof(ctx context.Context, proof []byte) ([]byte
 			header, err := buf.ReadByte()
 			if err != nil {
 				log.Error("Couldn't deserialize Celestia header byte", "err", err)
-				return nil, nil
+				return nil, err
 			}
 			daProof := []byte{}
 			if celestiaTypes.IsCelestiaMessageHeaderByte(header) {
@@ -626,12 +626,15 @@ func (m *ChallengeManager) getDAProof(ctx context.Context, proof []byte) ([]byte
 				blobBytes := buf.Bytes()
 
 				var celestiaReader celestiaTypes.CelestiaReader
-				for _, dapReader := range m.validator.DapReaders() {
-					switch reader := dapReader.(type) {
-					case celestiaTypes.CelestiaReader:
-						celestiaReader = reader
-					}
+				dapReader, exists := m.validator.DapReaders().GetByHeaderByte(celestiaTypes.CelestiaMessageHeaderFlag)
+				if !exists {
+					return nil, errors.New("celestia DapReader does not")
 				}
+				switch reader := dapReader.(type) {
+				case celestiaTypes.CelestiaReader:
+					celestiaReader = reader
+				}
+
 				daProof, err = celestiaReader.GetProof(ctx, blobBytes)
 				if err != nil {
 					return nil, err

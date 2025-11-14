@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/offchainlabs/nitro/daprovider"
 	"github.com/offchainlabs/nitro/daprovider/celestia/tree"
+	"github.com/offchainlabs/nitro/util/containers"
 )
 
 func NewReaderForCelestia(celestiaReader CelestiaReader) *readerForCelestia {
@@ -39,27 +40,51 @@ func (c *readerForCelestia) GetProof(ctx context.Context, msg []byte) ([]byte, e
 	return c.celestiaReader.GetProof(ctx, msg)
 }
 
-func (c *readerForCelestia) RecoverPayloadFromBatch(
-	ctx context.Context,
+func (c *readerForCelestia) RecoverPayload(
 	batchNum uint64,
 	batchBlockHash common.Hash,
 	sequencerMsg []byte,
-	preimages daprovider.PreimagesMap,
-	validateSeqMsg bool,
-) ([]byte, daprovider.PreimagesMap, error) {
-	return RecoverPayloadFromCelestiaBatch(ctx, batchNum, sequencerMsg, c.celestiaReader, preimages, validateSeqMsg)
+) containers.PromiseInterface[daprovider.PayloadResult] {
+	promise, ctx := containers.NewPromiseWithContext[daprovider.PayloadResult](context.Background())
+	go func() {
+		payload, _, err := c.recoverInternal(ctx, batchNum, sequencerMsg, false)
+		if err != nil {
+			promise.ProduceError(err)
+		} else {
+			promise.Produce(daprovider.PayloadResult{Payload: payload})
+		}
+	}()
+	return promise
 }
 
-func RecoverPayloadFromCelestiaBatch(
+// CollectPreimages collects preimages from the DA provider given the batch header information
+func (c *readerForCelestia) CollectPreimages(
+	batchNum uint64,
+	batchBlockHash common.Hash,
+	sequencerMsg []byte,
+) containers.PromiseInterface[daprovider.PreimagesResult] {
+	promise, ctx := containers.NewPromiseWithContext[daprovider.PreimagesResult](context.Background())
+	go func() {
+		_, preimages, err := c.recoverInternal(ctx, batchNum, sequencerMsg, true)
+		if err != nil {
+			promise.ProduceError(err)
+		} else {
+			promise.Produce(daprovider.PreimagesResult{Preimages: preimages})
+		}
+	}()
+	return promise
+}
+
+func (c *readerForCelestia) recoverInternal(
 	ctx context.Context,
 	batchNum uint64,
 	sequencerMsg []byte,
-	celestiaReader CelestiaReader,
-	preimages daprovider.PreimagesMap,
-	validateSeqMsg bool,
+	needPreimages bool,
 ) ([]byte, daprovider.PreimagesMap, error) {
+	var preimages daprovider.PreimagesMap
 	var preimageRecorder daprovider.PreimageRecorder
-	if preimages != nil {
+	if needPreimages {
+		preimages = make(daprovider.PreimagesMap)
 		preimageRecorder = daprovider.RecordPreimagesTo(preimages)
 	}
 	buf := bytes.NewBuffer(sequencerMsg[40:])
@@ -67,30 +92,28 @@ func RecoverPayloadFromCelestiaBatch(
 	header, err := buf.ReadByte()
 	if err != nil {
 		log.Error("Couldn't deserialize Celestia header byte", "err", err)
-		return nil, nil, nil
+		return nil, nil, errors.New("tried to deserialize a message that doesn't have the Celestia header")
 	}
 	if !IsCelestiaMessageHeaderByte(header) {
 		log.Error("Couldn't deserialize Celestia header byte", "err", errors.New("tried to deserialize a message that doesn't have the Celestia header"))
-		return nil, nil, nil
+		return nil, nil, errors.New("tried to deserialize a message that doesn't have the Celestia header")
 	}
 
 	blobPointer := BlobPointer{}
 	blobBytes := buf.Bytes()
 	err = blobPointer.UnmarshalBinary(blobBytes)
 	if err != nil {
-		log.Error("Couldn't unmarshal Celestia blob pointer", "err", err)
-		return nil, nil, nil
+		return nil, nil, err
 	}
 
-	payload, squareData, err := celestiaReader.Read(ctx, &blobPointer)
+	payload, squareData, err := c.celestiaReader.Read(ctx, &blobPointer)
 	if err != nil {
 		log.Error("Failed to resolve blob pointer from celestia", "err", err)
 		return nil, nil, err
 	}
 
-	// we read a batch that is to be discarded, so we return the empty batch
 	if len(payload) == 0 {
-		return payload, nil, nil
+		return nil, nil, errors.New("got empty payload from Celestia reader")
 	}
 
 	if preimageRecorder != nil {
@@ -98,7 +121,6 @@ func RecoverPayloadFromCelestiaBatch(
 			log.Error("squareData is nil, read from replay binary, but preimages are empty")
 			return nil, nil, err
 		}
-
 		odsSize := squareData.SquareSize / 2
 		rowIndex := squareData.StartRow
 		for _, row := range squareData.Rows {
@@ -128,7 +150,7 @@ func RecoverPayloadFromCelestiaBatch(
 		dataRootMatches := bytes.Equal(dataRoot, blobPointer.DataRoot[:])
 		if !dataRootMatches {
 			log.Error("Data Root do not match", "blobPointer data root", blobPointer.DataRoot, "calculated", dataRoot)
-			return nil, nil, nil
+			return nil, nil, errors.New("data roots do not match")
 		}
 	}
 

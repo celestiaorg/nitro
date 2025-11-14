@@ -311,7 +311,7 @@ func (v *StatelessBlockValidator) BOLDExecutionSpawners() []validator.BOLDExecut
 	return v.boldExecSpawners
 }
 
-func (v *StatelessBlockValidator) DapReaders() []daprovider.Reader {
+func (v *StatelessBlockValidator) DapReaders() *daprovider.ReaderRegistry {
 	return v.dapReaders
 }
 

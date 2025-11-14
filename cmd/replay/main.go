@@ -357,11 +357,11 @@ func main() {
 			keysetValidationMode = daprovider.KeysetDontValidate
 		}
 		dapReaders := daprovider.NewReaderRegistry()
-		if dasReader != nil {
-			err = dapReaders.SetupDASReader(dasutil.NewReaderForDAS(dasReader, dasKeysetFetcher, keysetValidationMode))
-			if err != nil {
-				panic(fmt.Sprintf("Failed to register DAS reader: %v", err))
-			}
+		err = dapReaders.SetupCelestiaReader(celestiaTypes.NewReaderForCelestia(&PreimageCelestiaReader{}))
+
+		err = dapReaders.SetupDASReader(dasutil.NewReaderForDAS(&PreimageDASReader{}, &PreimageDASReader{}, keysetValidationMode))
+		if err != nil {
+			panic(fmt.Sprintf("Failed to register DAS reader: %v", err))
 		}
 		// TODO (Diego): setup celestia reader
 		err = dapReaders.SetupBlobReader(daprovider.NewReaderForBlobReader(&BlobPreimageReader{}))
