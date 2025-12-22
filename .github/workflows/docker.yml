@@ -30,7 +30,7 @@ jobs:
     name: Docker build
     needs: check-label
     # Run if it's not a PR or if it's a PR with the required label
-    if: github.event_name != 'pull_request' || needs.check-label.outputs.should-run == 'true'
+    if: always() && (github.event_name != 'pull_request' || needs.check-label.outputs.should-run == 'true')
     runs-on: arbitrator-ci
     services:
       # local registry
